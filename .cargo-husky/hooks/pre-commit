@@ -1,12 +1,13 @@
 #!/bin/sh
 set -e
 
-files=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
-if [ -z "$files" ]; then
+if git diff --cached --quiet --diff-filter=ACMR -- '*.rs'; then
     exit 0
 fi
 
-printf '%s\n' "$files" | while IFS= read -r file; do
-    cargo fmt -- "$file"
-    git add -- "$file"
-done
+# Check only: formatting and re-staging here would include unstaged changes
+# from partially staged files in the commit.
+if ! cargo fmt --check; then
+    printf '%s\n' 'Formatting check failed. Run cargo fmt, review the changes, and stage the intended changes before committing again.' >&2
+    exit 1
+fi
