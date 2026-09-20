@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use rmcp::{
     handler::server::wrapper::Parameters,
-    schemars, serde, tool, tool_router,
+    schemars, tool, tool_router,
     transport::streamable_http_server::{
         StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
     },
@@ -19,9 +19,9 @@ struct Calculator;
 
 #[tool_router(server_handler)]
 impl Calculator {
-    #[tool(description="Add two numbers")]
-    fn add(&self,Parameters(AddParams {a,b}): Parameters<AddParams>) -> String{
-        (a+b).to_string()
+    #[tool(description = "Add two numbers")]
+    fn add(&self, Parameters(AddParams { a, b }): Parameters<AddParams>) -> String {
+        (a + b).to_string()
     }
 }
 
