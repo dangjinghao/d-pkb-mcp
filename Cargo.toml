@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+rmcp = { version = "3.4.0", features = ["server", "transport-streamable-http-server"] }
+anyhow = "1"
+axum = "0.8"
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
