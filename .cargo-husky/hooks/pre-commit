@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+files=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
+if [ -z "$files" ]; then
+    exit 0
+fi
+
+printf '%s\n' "$files" | while IFS= read -r file; do
+    cargo fmt -- "$file"
+    git add -- "$file"
+done
