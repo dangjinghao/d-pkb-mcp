@@ -1,0 +1,9 @@
+{
+  "features": {
+    "ghcr.io/siri404/devcontainer-ai-features/mcp-inspector:1": {
+      "version": "1.0.1",
+      "resolved": "ghcr.io/siri404/devcontainer-ai-features/mcp-inspector@sha256:888ad0aa5439d4c3f3692b334d4b6abe19a1f293fbe2ad542d53ed483b056250",
+      "integrity": "sha256:888ad0aa5439d4c3f3692b334d4b6abe19a1f293fbe2ad542d53ed483b056250"
+    }
+  }
+}
