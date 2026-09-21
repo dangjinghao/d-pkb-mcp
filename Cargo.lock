@@ -180,13 +180,9 @@ dependencies = [
  "axum",
  "cargo-husky",
  "chrono",
- "futures-util",
  "rmcp",
- "schemars",
  "serde",
- "serde_json",
  "tokio",
- "tokio-stream",
 ]
 
 [[package]]
