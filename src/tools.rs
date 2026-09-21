@@ -12,13 +12,22 @@ mod undo;
 mod write;
 
 use rmcp::{ServerHandler, handler::server::router::tool::ToolRouter, tool_handler};
+use std::{path::PathBuf, sync::Arc};
 
 const DEFAULT_LIMIT: usize = 1024;
 
 #[derive(Clone)]
-pub(crate) struct PkbManager;
+pub(crate) struct PkbManager {
+    pkb_root: Arc<PathBuf>,
+}
 
 impl PkbManager {
+    pub(crate) fn new(root: PathBuf) -> Self {
+        Self {
+            pkb_root: Arc::new(root),
+        }
+    }
+
     fn tool_router() -> ToolRouter<Self> {
         Self::list_router()
             + Self::read_router()

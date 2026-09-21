@@ -1,6 +1,6 @@
 //! Streamable HTTP transport and server startup.
 
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
@@ -8,9 +8,10 @@ use rmcp::transport::streamable_http_server::{
 
 use crate::tools::PkbManager;
 
-pub(crate) async fn run() -> anyhow::Result<()> {
+pub(crate) async fn run(root: PathBuf) -> anyhow::Result<()> {
+    let manager = PkbManager::new(root);
     let service = StreamableHttpService::new(
-        || Ok(PkbManager),
+        move || Ok(manager.clone()),
         Arc::new(LocalSessionManager::default()),
         StreamableHttpServerConfig::default(),
     );

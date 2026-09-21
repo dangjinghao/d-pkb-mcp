@@ -22,7 +22,7 @@ impl PkbManager {
         Reject paths outside the PKB root and access to internal snapshots. \
         Report failures as tool errors."
     )]
-    fn read(
+    async fn read(
         &self,
         Parameters(ReadParams {
             file_path,

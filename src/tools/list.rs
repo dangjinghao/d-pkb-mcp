@@ -1,15 +1,13 @@
 //! The `list` tool: input schema, description, and handler.
 
+use crate::paths::resolve_inside_root;
 use crate::tools::DEFAULT_LIMIT;
 
 use super::PkbManager;
 
 use chrono::{DateTime, Utc};
 use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
-use std::{
-    os::unix::fs::MetadataExt,
-    path::{Path, PathBuf},
-};
+use std::{os::unix::fs::MetadataExt, path::Path};
 use tokio::{
     fs::{self, DirEntry},
     io::Result,
@@ -19,24 +17,6 @@ use tokio::{
 struct ListParams {
     dir_path: String,
     limit: Option<usize>,
-}
-
-async fn resolve_inside_root(root: &Path, user_path: &str) -> Option<PathBuf> {
-    let candidate = if Path::new(user_path).is_absolute() {
-        return None;
-    } else {
-        root.join(user_path)
-    };
-
-    let real_path = fs::canonicalize(&candidate).await.ok()?;
-
-    let real_root = fs::canonicalize(root).await.ok()?;
-
-    if real_path.starts_with(&real_root) {
-        Some(real_path)
-    } else {
-        None
-    }
 }
 
 async fn read_dir(path: &Path, limit: usize) -> Result<(Vec<fs::DirEntry>, bool)> {
@@ -106,8 +86,7 @@ impl PkbManager {
         &self,
         Parameters(ListParams { dir_path, limit }): Parameters<ListParams>,
     ) -> String {
-        let pkb_root = Path::new(".");
-        if let Some(resolved_path) = resolve_inside_root(pkb_root, &dir_path).await {
+        if let Some(resolved_path) = resolve_inside_root(self.pkb_root.as_path(), &dir_path).await {
             match read_dir(&resolved_path, limit.unwrap_or(DEFAULT_LIMIT)).await {
                 Ok(entries) => ll_style_output(&entries.0, entries.1).await,
                 Err(e) => e.to_string(),
