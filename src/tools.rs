@@ -13,7 +13,7 @@ mod write;
 
 use rmcp::{ServerHandler, handler::server::router::tool::ToolRouter, tool_handler};
 
-const DEFAULT_LIMIT: u32 = 1024;
+const DEFAULT_LIMIT: usize = 1024;
 
 #[derive(Clone)]
 pub(crate) struct PkbManager;

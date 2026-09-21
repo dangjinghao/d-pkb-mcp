@@ -8,7 +8,7 @@ use super::PkbManager;
 struct SearchParams {
     regex_pattern: String,
     path: String,
-    limit: Option<u32>,
+    limit: Option<usize>,
 }
 
 #[tool_router(router = search_router, vis = "pub(super)")]

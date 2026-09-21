@@ -7,8 +7,8 @@ use super::PkbManager;
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct ReadParams {
     file_path: String,
-    limit: Option<u32>,
-    start: Option<u32>,
+    limit: Option<usize>,
+    start: Option<usize>,
 }
 
 #[tool_router(router = read_router, vis = "pub(super)")]
