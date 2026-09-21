@@ -25,7 +25,6 @@ impl PkbManager {
         &self,
         Parameters(WriteParams { file_path, content }): Parameters<WriteParams>,
     ) -> String {
-        // TODO
-        file_path
+        "TODO".to_owned()
     }
 }

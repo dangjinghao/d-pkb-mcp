@@ -25,7 +25,6 @@ impl PkbManager {
         Reject paths outside the PKB root and direct access to internal snapshots."
     )]
     fn undo(&self, Parameters(UndoParams { path }): Parameters<UndoParams>) -> String {
-        // TODO
-        path
+        "TODO".to_owned()
     }
 }

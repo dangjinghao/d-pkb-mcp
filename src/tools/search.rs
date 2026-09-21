@@ -32,7 +32,6 @@ impl PkbManager {
             limit,
         }): Parameters<SearchParams>,
     ) -> String {
-        // TODO
-        regex_pattern
+        "TODO".to_owned()
     }
 }

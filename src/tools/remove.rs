@@ -26,7 +26,6 @@ impl PkbManager {
         &self,
         Parameters(RemoveParams { path, recursive }): Parameters<RemoveParams>,
     ) -> String {
-        // TODO
-        path
+        "TODO".to_owned()
     }
 }

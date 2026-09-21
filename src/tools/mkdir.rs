@@ -23,7 +23,6 @@ impl PkbManager {
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root and access to internal snapshots.")]
     fn mkdir(&self, Parameters(MkdirParams { path, parents }): Parameters<MkdirParams>) -> String {
-        // TODO
-        path
+        "TODO".to_owned()
     }
 }

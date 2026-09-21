@@ -30,7 +30,6 @@ impl PkbManager {
         &self,
         Parameters(RenameParams { src_path, dst_path }): Parameters<RenameParams>,
     ) -> String {
-        // TODO
-        src_path
+        "TODO".to_owned()
     }
 }
