@@ -6,7 +6,10 @@ use super::PkbManager;
 
 use chrono::{DateTime, Utc};
 use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
-use std::{os::unix::fs::MetadataExt, path::Path};
+use std::{
+    os::unix::fs::MetadataExt,
+    path::{Path, PathBuf},
+};
 use tokio::{
     fs::{self, DirEntry},
     io::Result,
@@ -16,6 +19,24 @@ use tokio::{
 struct ListParams {
     dir_path: String,
     limit: Option<usize>,
+}
+
+async fn resolve_inside_root(root: &Path, user_path: &str) -> Option<PathBuf> {
+    let candidate = if Path::new(user_path).is_absolute() {
+        return None;
+    } else {
+        root.join(user_path)
+    };
+
+    let real_path = fs::canonicalize(&candidate).await.ok()?;
+
+    let real_root = fs::canonicalize(root).await.ok()?;
+
+    if real_path.starts_with(&real_root) {
+        Some(real_path)
+    } else {
+        None
+    }
 }
 
 async fn read_dir(path: &Path, limit: usize) -> Result<(Vec<fs::DirEntry>, bool)> {
@@ -73,21 +94,26 @@ async fn ll_style_output(entries: &[DirEntry], truncated: bool) -> String {
 #[tool_router(router = list_router, vis = "pub(super)")]
 impl PkbManager {
     #[tool(
-        description = "List the immediate children of <dir_path>, like `ls -l`, without recursion. \
+        description = "List the immediate children of <dir_path>, like `ls -al`, without recursion. \
         Return each entry's name, type, size, and modification time. \
-        <limit> defaults to DEFAULT_LIMIT entries when omitted or null. Indicate whether results are truncated. \
+        <limit> defaults to DEFAULT_LIMIT entries when omitted. Indicate whether results are truncated. \
         Relative paths are resolved from the PKB root, not a mutable working directory. \
         Paths are literal: no shell, tilde, environment-variable, or wildcard expansion. \
-        Reject paths outside the PKB root and access to internal snapshots. \
+        Reject paths outside the PKB root. \
         Return an empty result for an empty directory; report failures as tool errors."
     )]
     async fn list(
         &self,
         Parameters(ListParams { dir_path, limit }): Parameters<ListParams>,
     ) -> String {
-        match read_dir(Path::new(&dir_path), limit.unwrap_or(DEFAULT_LIMIT)).await {
-            Ok(entries) => ll_style_output(&entries.0, entries.1).await,
-            Err(e) => e.to_string(),
+        let pkb_root = Path::new(".");
+        if let Some(resolved_path) = resolve_inside_root(pkb_root, &dir_path).await {
+            match read_dir(&resolved_path, limit.unwrap_or(DEFAULT_LIMIT)).await {
+                Ok(entries) => ll_style_output(&entries.0, entries.1).await,
+                Err(e) => e.to_string(),
+            }
+        } else {
+            "Unsupported <dir_path>".to_owned()
         }
     }
 }
