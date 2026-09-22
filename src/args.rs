@@ -8,6 +8,8 @@ pub(crate) struct Args {
     /// Root directory of the personal knowledge base.
     #[arg(long, default_value = ".")]
     pub(crate) pkb_root: PathBuf,
+    #[arg(long, default_value = "127.0.0.1:8000")]
+    pub(crate) addr: String,
 }
 
 impl Args {
@@ -17,6 +19,9 @@ impl Args {
             .await
             .with_context(|| format!("Cannot resolve PKB root: {}", args.pkb_root.display()))
             .unwrap();
-        Args { pkb_root: root }
+        Args {
+            pkb_root: root,
+            addr: args.addr,
+        }
     }
 }

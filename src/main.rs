@@ -10,6 +10,7 @@ use anyhow::Context;
 async fn main() -> anyhow::Result<()> {
     let args = args::Args::new().await;
     let root = args.pkb_root;
+    let addr = args.addr;
     let metadata = tokio::fs::metadata(&root)
         .await
         .with_context(|| format!("Cannot inspect PKB root: {}", root.display()))?;
@@ -19,5 +20,5 @@ async fn main() -> anyhow::Result<()> {
         root.display()
     );
 
-    server::run(root).await
+    server::run(root, &addr).await
 }

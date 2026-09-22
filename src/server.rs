@@ -8,7 +8,7 @@ use rmcp::transport::streamable_http_server::{
 
 use crate::tools::PkbManager;
 
-pub(crate) async fn run(root: PathBuf) -> anyhow::Result<()> {
+pub(crate) async fn run(root: PathBuf, addr: &str) -> anyhow::Result<()> {
     let manager = PkbManager::new(root);
     let service = StreamableHttpService::new(
         move || Ok(manager.clone()),
@@ -17,8 +17,8 @@ pub(crate) async fn run(root: PathBuf) -> anyhow::Result<()> {
     );
 
     let router = axum::Router::new().nest_service("/mcp", service);
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:8000").await?;
-    println!("MCP server listening on http://127.0.0.1:8000/mcp");
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    println!("MCP server listening on http://{addr}/mcp");
     axum::serve(listener, router).await?;
     Ok(())
 }

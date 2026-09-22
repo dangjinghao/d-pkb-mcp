@@ -5,12 +5,12 @@ My personal knowledge base MCP.
 Currently, it's just a filesystem MCP with:
 
 - automatical file snapshot operation before any modification
-- snapshort restore operation
+- snapshort restore(undo) operation
 
 ## Run
 
 ```sh
-cargo run -- --pkb-root /path/to/pkb
+d-pkb-mcp --pkb-root /path/to/pkb
 ```
 
 `--pkb-root` is required and must point to an existing directory on the server.
