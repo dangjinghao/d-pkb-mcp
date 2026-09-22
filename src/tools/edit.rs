@@ -20,7 +20,7 @@ impl PkbManager {
         and report a tool error. Save a recovery snapshot before modifying the file; \
         if snapshot creation fails, leave the file unchanged and report a tool error. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
-        Reject paths outside the PKB root and access to internal snapshots."
+        Reject paths outside the PKB root."
     )]
     fn edit(
         &self,

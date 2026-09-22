@@ -19,7 +19,7 @@ impl PkbManager {
         Validate the request and save a recovery snapshot before modifying the file. \
         If validation or snapshot creation fails, leave the file unchanged and report a tool error. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
-        Reject paths outside the PKB root and access to internal snapshots."
+        Reject paths outside the PKB root."
     )]
     fn write(
         &self,

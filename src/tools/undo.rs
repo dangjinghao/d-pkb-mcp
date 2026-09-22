@@ -22,7 +22,7 @@ impl PkbManager {
         This is a snapshot recovery operation, not a POSIX command. \
         Report a tool error if no recovery record is available. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
-        Reject paths outside the PKB root and direct access to internal snapshots."
+        Reject paths outside the PKB root."
     )]
     fn undo(&self, Parameters(UndoParams { path }): Parameters<UndoParams>) -> String {
         "TODO".to_owned()

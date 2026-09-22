@@ -22,6 +22,12 @@ struct ListParams {
 async fn read_dir(path: &Path, limit: usize) -> Result<(Vec<fs::DirEntry>, bool)> {
     let mut entries = fs::read_dir(path).await?;
     let mut items = Vec::new();
+    if limit == 0 {
+        while let Some(entry) = entries.next_entry().await? {
+            items.push(entry);
+        }
+        return Ok((items, false));
+    }
     while items.len() < limit {
         match entries.next_entry().await? {
             Some(e) => items.push(e),
@@ -76,7 +82,8 @@ impl PkbManager {
     #[tool(
         description = "List the immediate children of <dir_path>, like `ls -al`, without recursion. \
         Return each entry's name, type, size, and modification time. \
-        <limit> defaults to DEFAULT_LIMIT entries when omitted. Indicate whether results are truncated. \
+        <limit> defaults to DEFAULT_LIMIT entries when omitted or null; 0 means no limit. \
+        Indicate whether results are truncated. \
         Relative paths are resolved from the PKB root, not a mutable working directory. \
         Paths are literal: no shell, tilde, environment-variable, or wildcard expansion. \
         Reject paths outside the PKB root. \

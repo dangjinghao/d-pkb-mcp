@@ -21,7 +21,7 @@ impl PkbManager {
         if validation or snapshot creation fails, make no changes and report a tool error. \
         Preserve a recovery record for the deleted path so undo can restore it. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
-        Reject removing the PKB root, paths outside it, and access to internal snapshots.")]
+        Reject removing the PKB root and paths outside it.")]
     fn remove(
         &self,
         Parameters(RemoveParams { path, recursive }): Parameters<RemoveParams>,

@@ -64,10 +64,10 @@ impl PkbManager {
     #[tool(
         description = "Read the text file at <file_path>, like `cat` with an optional line range. \
         <start> is a 1-based, inclusive line number and defaults to 1 when omitted or null. \
-        <limit> defaults to DEFAULT_LIMIT lines when omitted or null, 0 means read all. \
+        <limit> defaults to DEFAULT_LIMIT lines when omitted or null; 0 means no limit. \
         Indicate whether results are truncated and provide the next line number when more content remains. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
-        Reject paths outside the PKB root and access to internal snapshots. \
+        Reject paths outside the PKB root. \
         Report failures as tool errors."
     )]
     async fn read(

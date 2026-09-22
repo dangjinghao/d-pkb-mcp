@@ -21,7 +21,7 @@ impl PkbManager {
         if validation or snapshot creation fails, make no changes and report a tool error. \
         Record which directories were created for undo. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
-        Reject paths outside the PKB root and access to internal snapshots.")]
+        Reject paths outside the PKB root.")]
     fn mkdir(&self, Parameters(MkdirParams { path, parents }): Parameters<MkdirParams>) -> String {
         "TODO".to_owned()
     }

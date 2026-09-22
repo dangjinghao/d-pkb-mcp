@@ -17,11 +17,11 @@ impl PkbManager {
         description = "Recursively find files and directories under <path>, like `find` with `-name`. \
         Match <glob_pattern> against each entry's basename, not its full relative path. \
         Only <glob_pattern> is interpreted as a glob; <path> is literal. \
-        <limit> defaults to DEFAULT_LIMIT matching entries when omitted or null. \
+        <limit> defaults to DEFAULT_LIMIT matching entries when omitted or null; 0 means no limit. \
         Return matching paths and indicate whether results are truncated. \
         No matches is a successful empty result. Report failures as tool errors. \
         Relative paths are resolved from the PKB root, with no shell expansion. \
-        Reject paths outside the PKB root and exclude internal snapshots."
+        Reject paths outside the PKB root."
     )]
     fn find(
         &self,

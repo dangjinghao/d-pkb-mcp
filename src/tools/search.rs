@@ -18,11 +18,11 @@ impl PkbManager {
         Interpret <regex_pattern> as a regular expression and return each matching line \
         with its file path, 1-based line number, and text. \
         <limit> defaults to DEFAULT_LIMIT matching lines in total when omitted or null, not files \
-        or individual matches. Indicate whether results are truncated. \
+        or individual matches; 0 means no limit. Indicate whether results are truncated. \
         No matches is a successful empty result. Report invalid regular expressions and other failures \
         as tool errors. Relative paths are resolved from the PKB root. \
         Paths are literal, with no shell expansion. \
-        Reject paths outside the PKB root and exclude internal snapshots."
+        Reject paths outside the PKB root."
     )]
     fn search(
         &self,

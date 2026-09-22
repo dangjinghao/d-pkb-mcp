@@ -24,7 +24,7 @@ impl PkbManager {
         if validation or snapshot creation fails, make no changes and report a tool error. \
         Record both the source and resulting destination paths; undo uses the resulting destination path. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
-        Reject moving the PKB root, paths outside it, and access to internal snapshots."
+        Reject moving the PKB root and paths outside it."
     )]
     fn rename(
         &self,
