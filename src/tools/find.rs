@@ -6,7 +6,10 @@ use globset::{Glob, GlobMatcher};
 use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
 use tokio::io;
 
-use crate::{paths::resolve_inside_root, tools::DEFAULT_LIMIT, walk::Walker};
+use crate::{
+    paths::{Walker, resolve_inside_root},
+    tools::DEFAULT_LIMIT,
+};
 
 use super::PkbManager;
 
