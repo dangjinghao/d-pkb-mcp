@@ -2,6 +2,7 @@ mod args;
 mod paths;
 mod server;
 mod tools;
+mod walk;
 
 use anyhow::Context;
 
