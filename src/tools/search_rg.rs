@@ -11,7 +11,7 @@ use super::PkbManager;
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct SearchRgParams {
     regex_pattern: String,
-    path: String,
+    path: Option<String>,
     limit: Option<usize>,
 }
 
@@ -42,7 +42,9 @@ impl PkbManager {
         No matches is a successful empty result. If `rg` is not installed, return \
         \"`rg` is not available, use native tool instead\". \
         Report invalid regular expressions and other failures as tool errors. \
-        Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
+        Relative paths are resolved from the PKB root. \
+        <path> defaults to the PKB root when omitted or null. \
+        Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root."
     )]
     async fn search_rg(
@@ -54,7 +56,8 @@ impl PkbManager {
         }): Parameters<SearchRgParams>,
     ) -> String {
         let root = self.pkb_root.as_path();
-        let Some(resolved_path) = resolve_inside_root(root, &path).await else {
+        let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")).await
+        else {
             return "Unsupported <path>".to_owned();
         };
 

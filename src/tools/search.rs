@@ -19,7 +19,7 @@ use super::PkbManager;
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct SearchParams {
     regex_pattern: String,
-    path: String,
+    path: Option<String>,
     limit: Option<usize>,
 }
 
@@ -97,7 +97,8 @@ impl PkbManager {
         <limit> defaults to DEFAULT_LIMIT matching lines in total when omitted or null, not files \
         or individual matches; 0 means no limit. Indicate whether results are truncated. \
         No matches is a successful empty result. Report invalid regular expressions and other failures \
-        as tool errors. Relative paths are resolved from the PKB root. \
+        as tool errors.         Relative paths are resolved from the PKB root. \
+        <path> defaults to the PKB root when omitted or null. \
         Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root."
     )]
@@ -114,7 +115,8 @@ impl PkbManager {
             Err(e) => return format!("Invalid <regex_pattern>: {e}"),
         };
         let root = self.pkb_root.as_path();
-        let Some(resolved_path) = resolve_inside_root(root, &path).await else {
+        let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")).await
+        else {
             return "Unsupported <path>".to_owned();
         };
 

@@ -15,7 +15,7 @@ use tokio::{
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct ListParams {
-    dir_path: String,
+    dir_path: Option<String>,
     limit: Option<usize>,
 }
 
@@ -81,6 +81,7 @@ async fn ll_style_output(entries: &[DirEntry], truncated: bool) -> String {
 impl PkbManager {
     #[tool(
         description = "List the immediate children of <dir_path>, like `ls -al`, without recursion. \
+        <dir_path> defaults to the PKB root when omitted or null. \
         Return each entry's name, type, size, and modification time. \
         <limit> defaults to DEFAULT_LIMIT entries when omitted or null; 0 means no limit. \
         Indicate whether results are truncated. \
@@ -93,7 +94,9 @@ impl PkbManager {
         &self,
         Parameters(ListParams { dir_path, limit }): Parameters<ListParams>,
     ) -> String {
-        if let Some(resolved_path) = resolve_inside_root(self.pkb_root.as_path(), &dir_path).await {
+        if let Some(resolved_path) =
+            resolve_inside_root(self.pkb_root.as_path(), dir_path.as_deref().unwrap_or(".")).await
+        {
             match read_dir(&resolved_path, limit.unwrap_or(DEFAULT_LIMIT)).await {
                 Ok(entries) => ll_style_output(&entries.0, entries.1).await,
                 Err(e) => e.to_string(),

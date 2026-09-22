@@ -11,7 +11,7 @@ use super::PkbManager;
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct FindRgParams {
     glob_pattern: String,
-    path: String,
+    path: Option<String>,
     limit: Option<usize>,
 }
 
@@ -33,7 +33,8 @@ impl PkbManager {
         alternative to `find` on large knowledge bases. \
         Match <glob_pattern> with rg's glob syntax: a pattern without `/` matches a basename at any \
         depth, while a pattern containing `/` is matched against the path relative to <path>. \
-        Only <glob_pattern> is interpreted as a glob; <path> is literal. \
+        Only <glob_pattern> is interpreted as a glob; <path> is literal and defaults to the PKB root \
+        when omitted or null. \
         Like `find`, this includes hidden entries and does not honor ignore files such as \
         `.gitignore` and `.ignore`; unlike `find`, it lists files only, never directories. \
         <limit> defaults to DEFAULT_LIMIT matching entries when omitted or null; 0 means no limit. \
@@ -53,7 +54,8 @@ impl PkbManager {
         }): Parameters<FindRgParams>,
     ) -> String {
         let root = self.pkb_root.as_path();
-        let Some(resolved_path) = resolve_inside_root(root, &path).await else {
+        let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")).await
+        else {
             return "Unsupported <path>".to_owned();
         };
 

@@ -16,7 +16,7 @@ use super::PkbManager;
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct FindParams {
     glob_pattern: String,
-    path: String,
+    path: Option<String>,
     limit: Option<usize>,
 }
 
@@ -67,7 +67,8 @@ impl PkbManager {
     #[tool(
         description = "Recursively find files and directories under <path>, like `find` with `-name`. \
         Match <glob_pattern> against each entry's basename, not its full relative path. \
-        Only <glob_pattern> is interpreted as a glob; <path> is literal. \
+        Only <glob_pattern> is interpreted as a glob; <path> is literal and defaults to the PKB root \
+        when omitted or null. \
         <limit> defaults to DEFAULT_LIMIT matching entries when omitted or null; 0 means no limit. \
         Return matching paths and indicate whether results are truncated. \
         No matches is a successful empty result. Report failures as tool errors. \
@@ -87,7 +88,8 @@ impl PkbManager {
             Err(e) => return format!("Invalid <glob_pattern>: {e}"),
         };
         let root = self.pkb_root.as_path();
-        let Some(resolved_path) = resolve_inside_root(root, &path).await else {
+        let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")).await
+        else {
             return "Unsupported <path>".to_owned();
         };
 
