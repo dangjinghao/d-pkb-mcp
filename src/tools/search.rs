@@ -68,7 +68,7 @@ fn format_matches(root: &Path, matches: &[LineMatch], truncated: bool) -> String
         .iter()
         .map(|line_match| {
             format!(
-                "{}\t{}\t{}",
+                "{}:{}:{}",
                 line_match
                     .path
                     .strip_prefix(root)

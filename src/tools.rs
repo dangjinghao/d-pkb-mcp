@@ -2,12 +2,14 @@
 
 mod edit;
 mod find;
+mod find_rg;
 mod list;
 mod mkdir;
 mod read;
 mod remove;
 mod rename;
 mod search;
+mod search_rg;
 mod undo;
 mod write;
 
@@ -37,7 +39,9 @@ impl PkbManager {
             + Self::rename_router()
             + Self::remove_router()
             + Self::find_router()
+            + Self::find_rg_router()
             + Self::search_router()
+            + Self::search_rg_router()
             + Self::undo_router()
     }
 }
