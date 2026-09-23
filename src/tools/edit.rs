@@ -22,6 +22,7 @@ struct EditParams {
 #[derive(Debug, serde::Serialize, schemars::JsonSchema)]
 struct EditOutput {
     after_hash: String,
+    start_line: usize,
 }
 
 #[tool_router(router = edit_router, vis = "pub(super)")]
@@ -36,7 +37,8 @@ impl PkbManager {
         `sha mismatch, current_sha: <sha256 hex>`. \
         Save a recovery snapshot before modifying the file; \
         if snapshot creation fails, leave the file unchanged and report a tool error. \
-        Return the SHA-256 hex digest of the edited file as structured content (`after_hash`). \
+        Return the SHA-256 hex digest of the edited file as `after_hash` and the 1-based line \
+        number where the matched <old_str> started as `start_line` in structured content. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root.",
         output_schema = rmcp::handler::server::tool::schema_for_output::<EditOutput>()
@@ -64,12 +66,18 @@ impl PkbManager {
         if current_hash != if_hash {
             return Err(format!("sha mismatch, current_sha: {current_hash}"));
         }
-        let occurrences = content.matches(&old_str).count();
-        if occurrences != 1 {
+        let mut occurrences = content.match_indices(&old_str);
+        let Some((start, _)) = occurrences.next() else {
+            return Err("Invalid <old_str>: expected exactly one occurrence, found 0".to_owned());
+        };
+        let extra = occurrences.count();
+        if extra > 0 {
             return Err(format!(
-                "Invalid <old_str>: expected exactly one occurrence, found {occurrences}"
+                "Invalid <old_str>: expected exactly one occurrence, found {}",
+                extra + 1
             ));
         }
+        let start_line = content[..start].matches('\n').count() + 1;
         let updated = content.replacen(&old_str, &new_str, 1);
         let after_hash = sha256_hex(updated.as_bytes());
 
@@ -82,7 +90,10 @@ impl PkbManager {
         match temp.persist(&target) {
             Ok(_) => {
                 //TODO: snapshot(path)
-                let output = EditOutput { after_hash };
+                let output = EditOutput {
+                    after_hash,
+                    start_line,
+                };
                 let value = match serde_json::to_value(&output) {
                     Ok(value) => value,
                     Err(error) => return Err(error.to_string()),
