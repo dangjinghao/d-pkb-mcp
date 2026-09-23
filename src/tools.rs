@@ -6,13 +6,13 @@ mod find;
 mod find_rg;
 mod list;
 mod mkdir;
+mod overwrite;
 mod read;
 mod remove;
 mod rename;
 mod search;
 mod search_rg;
 mod undo;
-mod write;
 
 use rmcp::{ServerHandler, handler::server::router::tool::ToolRouter, tool_handler};
 use std::{path::PathBuf, sync::Arc};
@@ -37,7 +37,7 @@ impl PkbManager {
         Self::list_router()
             + Self::read_router()
             + Self::create_router()
-            + Self::write_router()
+            + Self::overwrite_router()
             + Self::edit_router()
             + Self::mkdir_router()
             + Self::rename_router()
