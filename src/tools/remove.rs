@@ -19,10 +19,8 @@ struct RemoveParams {
 }
 
 #[derive(Debug, serde::Serialize, schemars::JsonSchema)]
-#[serde(untagged)]
-enum RemoveOutput {
-    Removed { path: String }, // it is not a good return
-    HashMismatch { current_hash: String },
+struct RemoveOutput {
+    path: String,
 }
 
 #[tool_router(router = remove_router, vis = "pub(super)")]
@@ -32,8 +30,8 @@ impl PkbManager {
         With <recursive>=true, remove a directory and its contents, like `rm -r`. \
         A missing path is an error; there is no force mode. \
         For a regular file, proceed only when <if_hash> equals the SHA-256 hex digest of the current \
-        file content; otherwise leave the file unchanged and report a tool error with the current hash \
-        as structured content (`current_hash`). <if_hash> is required for regular-file removal and \
+        file content; otherwise leave the file unchanged and report a tool error whose text is \
+        `sha mismatch, current_sha: <sha256 hex>`. <if_hash> is required for regular-file removal and \
         ignored for directory removal. \
         The PKB must contain only regular files and directories; behavior is undefined if symbolic links are present. \
         For regular-file removal, validate the request and save a Git snapshot before deletion, \
@@ -76,17 +74,7 @@ impl PkbManager {
             };
             let current_hash = sha256_hex(&content);
             if current_hash != if_hash {
-                let message = format!(
-                    "Invalid <if_hash>: does not match the current file content (current hash: {current_hash})"
-                );
-                let output = RemoveOutput::HashMismatch { current_hash };
-                let value = match serde_json::to_value(&output) {
-                    Ok(value) => value,
-                    Err(error) => return Err(error.to_string()),
-                };
-                let mut result = CallToolResult::error(vec![ContentBlock::text(message)]);
-                result.structured_content = Some(value);
-                return Ok(result);
+                return Err(format!("sha mismatch, current_sha: {current_hash}"));
             }
         }
 
@@ -108,7 +96,7 @@ impl PkbManager {
                 let landed = target
                     .strip_prefix(self.pkb_root.as_path())
                     .unwrap_or(&target);
-                let output = RemoveOutput::Removed {
+                let output = RemoveOutput {
                     path: landed.to_string_lossy().into_owned(),
                 };
                 let value = match serde_json::to_value(&output) {

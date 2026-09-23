@@ -19,10 +19,8 @@ struct RenameParams {
 }
 
 #[derive(Debug, serde::Serialize, schemars::JsonSchema)]
-#[serde(untagged)]
-enum RenameOutput {
-    Renamed { path: String }, // it is not a good return
-    HashMismatch { current_hash: String },
+struct RenameOutput {
+    path: String,
 }
 
 #[tool_router(router = rename_router, vis = "pub(super)")]
@@ -35,8 +33,8 @@ impl PkbManager {
         Report a tool error if the resulting destination already exists, the source is missing, \
         or a directory would be moved into itself or one of its descendants. \
         For a regular file, proceed only when <if_hash> equals the SHA-256 hex digest of the current \
-        file content; otherwise leave the entry unchanged and report a tool error with the current hash \
-        as structured content (`current_hash`). <if_hash> is required for regular-file rename and \
+        file content; otherwise leave the entry unchanged and report a tool error whose text is \
+        `sha mismatch, current_sha: <sha256 hex>`. <if_hash> is required for regular-file rename and \
         ignored for directory rename. \
         Do not merge directories or overwrite existing entries. \
         Correct an accidental move by renaming the entry back. Later full-PKB snapshots may capture the move. \
@@ -101,17 +99,7 @@ impl PkbManager {
             };
             let current_hash = sha256_hex(&content);
             if current_hash != if_hash {
-                let message = format!(
-                    "Invalid <if_hash>: does not match the current file content (current hash: {current_hash})"
-                );
-                let output = RenameOutput::HashMismatch { current_hash };
-                let value = match serde_json::to_value(&output) {
-                    Ok(value) => value,
-                    Err(error) => return Err(error.to_string()),
-                };
-                let mut result = CallToolResult::error(vec![ContentBlock::text(message)]);
-                result.structured_content = Some(value);
-                return Ok(result);
+                return Err(format!("sha mismatch, current_sha: {current_hash}"));
             }
         }
 
@@ -126,7 +114,7 @@ impl PkbManager {
                 } else {
                     format!("Renamed {src_path} to {dst_path}")
                 };
-                let output = RenameOutput::Renamed { path };
+                let output = RenameOutput { path };
                 let value = match serde_json::to_value(&output) {
                     Ok(value) => value,
                     Err(error) => return Err(error.to_string()),
