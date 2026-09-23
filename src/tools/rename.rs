@@ -37,12 +37,7 @@ impl PkbManager {
         `sha mismatch, current_sha: <sha256 hex>`. <if_hash> is required for regular-file rename and \
         ignored for directory rename. \
         Do not merge directories or overwrite existing entries. \
-        Correct an accidental move by renaming the entry back. Later full-PKB snapshots may capture the move. \
-        Snapshot history is path-based; the destination does not inherit the source's undo history. \
-        To recover an older file version, move it back and consult its original path's history, \
-        or use snapshot_list and an explicit undo snapshot to restore the original path. \
-        Explicit restoration can recreate the original file without a placeholder and leaves \
-        the destination untouched; it does not reverse the rename. \
+        Correct an accidental move by renaming the entry back. \
         Return the final root-relative path as structured content (`path`). \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject moving the PKB root and paths outside it.",

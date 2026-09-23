@@ -35,8 +35,6 @@ impl PkbManager {
         Proceed only when <if_hash> equals the SHA-256 hex digest of the current file content; \
         otherwise leave the file unchanged and report a tool error whose text is \
         `sha mismatch, current_sha: <sha256 hex>`. \
-        Save a recovery snapshot before modifying the file; \
-        if snapshot creation fails, leave the file unchanged and report a tool error. \
         Return the SHA-256 hex digest of the edited file as `after_hash` and the 1-based line \
         number where the matched <old_str> started as `start_line` in structured content. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \

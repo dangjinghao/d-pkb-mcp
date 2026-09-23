@@ -31,11 +31,6 @@ impl PkbManager {
         Proceed only when <if_hash> equals the SHA-256 hex digest of the current file content; \
         otherwise leave the file unchanged and report a tool error whose text is \
         `sha mismatch, current_sha: <sha256 hex>`. \
-        Save a recovery snapshot before modifying the file, then save another snapshot after writing. \
-        If the pre-write snapshot fails, leave the file unchanged and report a tool error. \
-        If the post-write snapshot fails, report that the write completed but snapshot creation failed. \
-        The post-write snapshot records the file's on-disk state after the write, including any \
-        third-party writes that raced with this operation, so undo restores the actual resulting state. \
         Return the SHA-256 hex digest of the overwritten file as structured content (`after_hash`). \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root.",

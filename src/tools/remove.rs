@@ -34,12 +34,6 @@ impl PkbManager {
         `sha mismatch, current_sha: <sha256 hex>`. <if_hash> is required for regular-file removal and \
         ignored for directory removal. \
         The PKB must contain only regular files and directories; behavior is undefined if symbolic links are present. \
-        For regular-file removal, validate the request and save a Git snapshot before deletion, \
-        then save another snapshot after deletion. If the pre-removal snapshot fails, make no changes. \
-        If the post-removal snapshot fails, report that deletion completed but snapshot creation failed. \
-        Record the file's root-relative path and its before/after snapshots so undo can restore it \
-        using the original path even when the file no longer exists. \
-        Directory removal, including recursive removal, has no recovery guarantee. \
         Return the removed root-relative path as structured content (`path`). \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject removing the PKB root and paths outside it.",
