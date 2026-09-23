@@ -53,10 +53,12 @@ impl PkbManager {
         } else {
             fs::remove_file(&target).await
         };
-        //TODO: snapshot(path)
 
         match result {
-            Ok(()) => format!("Removed {path}"),
+            Ok(()) => {
+                //TODO: snapshot(path)
+                format!("Removed {path}")
+            }
             Err(error) => error.to_string(),
         }
     }
