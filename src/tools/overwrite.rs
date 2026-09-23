@@ -19,8 +19,10 @@ struct OverwriteParams {
 }
 
 #[derive(Debug, serde::Serialize, schemars::JsonSchema)]
-struct OverwriteOutput {
-    after_hash: String,
+#[serde(untagged)]
+enum OverwriteOutput {
+    Overwritten { after_hash: String },
+    HashMismatch { current_hash: String },
 }
 
 #[tool_router(router = overwrite_router, vis = "pub(super)")]
@@ -29,7 +31,8 @@ impl PkbManager {
         description = "Overwrite the existing file at <file_path> with <content>, replacing its entire content. \
         The target must already exist; a missing path is an error and nothing is created. \
         Proceed only when <if_hash> equals the SHA-256 hex digest of the current file content; \
-        otherwise leave the file unchanged and report a tool error. \
+        otherwise leave the file unchanged and report a tool error with the current hash \
+        as structured content (`current_hash`). \
         Save a recovery snapshot before modifying the file, then save another snapshot after writing. \
         If the pre-write snapshot fails, leave the file unchanged and report a tool error. \
         If the post-write snapshot fails, report that the write completed but snapshot creation failed. \
@@ -55,8 +58,19 @@ impl PkbManager {
             Ok(current) => current,
             Err(error) => return Err(error.to_string()),
         };
-        if sha256_hex(current.as_bytes()) != if_hash {
-            return Err("Invalid <if_hash>: does not match the current file content".to_owned());
+        let current_hash = sha256_hex(current.as_bytes());
+        if current_hash != if_hash {
+            let message = format!(
+                "Invalid <if_hash>: does not match the current file content (current hash: {current_hash})"
+            );
+            let output = OverwriteOutput::HashMismatch { current_hash };
+            let value = match serde_json::to_value(&output) {
+                Ok(value) => value,
+                Err(error) => return Err(error.to_string()),
+            };
+            let mut result = CallToolResult::error(vec![ContentBlock::text(message)]);
+            result.structured_content = Some(value);
+            return Ok(result);
         }
         let after_hash = sha256_hex(content.as_bytes());
         let temp = match stage(self.tmp_path.as_path(), &target, content.as_bytes()).await {
@@ -68,7 +82,7 @@ impl PkbManager {
         match temp.persist(&target) {
             Ok(_) => {
                 //TODO: snapshot(path)
-                let output = OverwriteOutput { after_hash };
+                let output = OverwriteOutput::Overwritten { after_hash };
                 let value = match serde_json::to_value(&output) {
                     Ok(value) => value,
                     Err(error) => return Err(error.to_string()),

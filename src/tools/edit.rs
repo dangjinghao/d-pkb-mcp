@@ -20,8 +20,10 @@ struct EditParams {
 }
 
 #[derive(Debug, serde::Serialize, schemars::JsonSchema)]
-struct EditOutput {
-    after_hash: String,
+#[serde(untagged)]
+enum EditOutput {
+    Edited { after_hash: String },
+    HashMismatch { current_hash: String },
 }
 
 #[tool_router(router = edit_router, vis = "pub(super)")]
@@ -32,7 +34,8 @@ impl PkbManager {
         <old_str> must be nonempty and must match exactly once; otherwise leave the file unchanged \
         and report a tool error. \
         Proceed only when <if_hash> equals the SHA-256 hex digest of the current file content; \
-        otherwise leave the file unchanged and report a tool error. \
+        otherwise leave the file unchanged and report a tool error with the current hash \
+        as structured content (`current_hash`). \
         Save a recovery snapshot before modifying the file; \
         if snapshot creation fails, leave the file unchanged and report a tool error. \
         Return the SHA-256 hex digest of the edited file as structured content (`after_hash`). \
@@ -59,8 +62,19 @@ impl PkbManager {
             Ok(content) => content,
             Err(error) => return Err(error.to_string()),
         };
-        if sha256_hex(content.as_bytes()) != if_hash {
-            return Err("Invalid <if_hash>: does not match the current file content".to_owned());
+        let current_hash = sha256_hex(content.as_bytes());
+        if current_hash != if_hash {
+            let message = format!(
+                "Invalid <if_hash>: does not match the current file content (current hash: {current_hash})"
+            );
+            let output = EditOutput::HashMismatch { current_hash };
+            let value = match serde_json::to_value(&output) {
+                Ok(value) => value,
+                Err(error) => return Err(error.to_string()),
+            };
+            let mut result = CallToolResult::error(vec![ContentBlock::text(message)]);
+            result.structured_content = Some(value);
+            return Ok(result);
         }
         let occurrences = content.matches(&old_str).count();
         if occurrences != 1 {
@@ -80,7 +94,7 @@ impl PkbManager {
         match temp.persist(&target) {
             Ok(_) => {
                 //TODO: snapshot(path)
-                let output = EditOutput { after_hash };
+                let output = EditOutput::Edited { after_hash };
                 let value = match serde_json::to_value(&output) {
                     Ok(value) => value,
                     Err(error) => return Err(error.to_string()),
