@@ -36,14 +36,14 @@ async fn read_file(path: &Path, start: usize, limit: usize) -> io::Result<(Strin
     let file_content = fs::read_to_string(path).await?;
     let hash = sha256_hex(file_content.as_bytes());
 
-    let lines: Vec<&str> = file_content.lines().collect();
+    let lines: Vec<&str> = file_content.split_inclusive('\n').collect();
     let begin = (start - 1).min(lines.len());
     let end = if limit == 0 {
         lines.len()
     } else {
         begin.saturating_add(limit).min(lines.len())
     };
-    let content = lines[begin..end].join("\n");
+    let content = lines[begin..end].concat();
     let is_truncated = limit > 0 && end < lines.len();
 
     Ok((content, is_truncated, hash))
@@ -55,10 +55,11 @@ impl PkbManager {
         description = "Read the text file at <file_path>, like `cat` with an optional line range. \
         <start> is a 1-based, inclusive line number and defaults to 1 when omitted or null. \
         <limit> defaults to DEFAULT_LIMIT lines when omitted or null; 0 means no limit. \
+        Return the selected text exactly as in the file, including line endings; for a full read it \
+        equals the whole file, so its SHA-256 equals `hash`. \
         Indicate whether results are truncated and the range of lines shown when more content remains. \
-        As structured content, return `content` (the selected lines, without the truncation marker), \
-        the SHA-256 hex digest of the entire file as `hash` (independent of <start> and <limit>), \
-        and the truncation state as `is_truncated`. \
+        As structured content, return the SHA-256 hex digest of the entire file as `hash` \
+        (independent of <start> and <limit>) and the truncation state as `is_truncated`. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root. \
         Report failures as tool errors.",
@@ -83,7 +84,7 @@ impl PkbManager {
                 let mut text = content.clone();
                 if is_truncated {
                     text.push_str(&format!(
-                        "\n[truncated: showing line {} ~ {} ]",
+                        "[truncated: showing line {} ~ {} ]",
                         start,
                         start + limit - 1
                     ));
