@@ -1,5 +1,7 @@
 //! The `write` tool: input schema, description, and handler.
 
+use std::{fs::Permissions, os::unix::fs::PermissionsExt};
+
 use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
 use tokio::fs;
 
@@ -46,16 +48,26 @@ impl PkbManager {
             .and_then(|extension| extension.to_str())
             .map(|extension| format!(".{extension}"))
             .unwrap_or_default();
-        let temp = match tempfile::Builder::new()
-            .prefix(&prefix)
-            .suffix(&suffix)
-            .tempfile_in(self.tmp_path.as_path())
-        {
+        let existing = fs::metadata(&target)
+            .await
+            .ok()
+            .filter(|metadata| metadata.is_file());
+        let mut builder = tempfile::Builder::new();
+        builder.prefix(&prefix).suffix(&suffix);
+        if existing.is_none() {
+            builder.permissions(Permissions::from_mode(0o666));
+        }
+        let temp = match builder.tempfile_in(self.tmp_path.as_path()) {
             Ok(temp) => temp,
             Err(error) => return error.to_string(),
         };
         if let Err(error) = fs::write(temp.path(), &content).await {
             return error.to_string();
+        }
+        if let Some(metadata) = &existing {
+            if let Err(error) = fs::set_permissions(temp.path(), metadata.permissions()).await {
+                return error.to_string();
+            }
         }
 
         //TODO: snapshot(path)
