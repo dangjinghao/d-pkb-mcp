@@ -17,9 +17,12 @@ impl PkbManager {
         With <recursive>=true, remove a directory and its contents, like `rm -r`. \
         A missing path is an error; there is no force mode. \
         Remove symbolic links themselves without following their targets. \
-        Validate the request and save a recovery snapshot before removal; \
-        if validation or snapshot creation fails, make no changes and report a tool error. \
-        Preserve a recovery record for the deleted path so undo can restore it. \
+        For regular-file removal, validate the request and save a Git snapshot before deletion, \
+        then save another snapshot after deletion. If the pre-removal snapshot fails, make no changes. \
+        If the post-removal snapshot fails, report that deletion completed but snapshot creation failed. \
+        Record the file's root-relative path and its before/after snapshots so undo can restore it \
+        using the original path even when the file no longer exists. \
+        Directory removal, including recursive removal, and symbolic-link removal have no recovery guarantee. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject removing the PKB root and paths outside it.")]
     fn remove(

@@ -20,9 +20,13 @@ impl PkbManager {
         Report a tool error if the resulting destination already exists, the source is missing, \
         or a directory would be moved into itself or one of its descendants. \
         Do not merge directories or overwrite existing entries. \
-        Validate the request and save a recovery snapshot before moving; \
-        if validation or snapshot creation fails, make no changes and report a tool error. \
-        Record both the source and resulting destination paths; undo uses the resulting destination path. \
+        Do not create snapshot commits or an undo record for this operation. \
+        Correct an accidental move by renaming the entry back. Later full-PKB snapshots may capture the move. \
+        Snapshot history is path-based; the destination does not inherit the source's undo history. \
+        To recover an older file version, move it back and consult its original path's history, \
+        or use snapshot_list and an explicit undo snapshot to restore the original path. \
+        Explicit restoration can recreate the original file without a placeholder and leaves \
+        the destination untouched; it does not reverse the rename. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject moving the PKB root and paths outside it."
     )]

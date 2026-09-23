@@ -17,9 +17,6 @@ impl PkbManager {
         and an existing target is an error. With <parents>=true, behave like `mkdir -p`: \
         create missing parent directories and succeed if <path> is already a directory. \
         An existing file in place of a required directory is an error. \
-        Validate the request and save a recovery snapshot before creating directories; \
-        if validation or snapshot creation fails, make no changes and report a tool error. \
-        Record which directories were created for undo. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root.")]
     fn mkdir(&self, Parameters(MkdirParams { path, parents }): Parameters<MkdirParams>) -> String {
