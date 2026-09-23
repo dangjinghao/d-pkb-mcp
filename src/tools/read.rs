@@ -22,7 +22,6 @@ struct ReadParams {
 
 #[derive(Debug, serde::Serialize, schemars::JsonSchema)]
 struct ReadOutput {
-    content: String,
     hash: String,
     is_truncated: bool,
 }
@@ -89,11 +88,7 @@ impl PkbManager {
                         start + limit - 1
                     ));
                 }
-                let output = ReadOutput {
-                    content,
-                    hash,
-                    is_truncated,
-                };
+                let output = ReadOutput { hash, is_truncated };
                 let value = match serde_json::to_value(&output) {
                     Ok(value) => value,
                     Err(error) => return Err(error.to_string()),
