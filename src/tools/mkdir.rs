@@ -1,6 +1,9 @@
 //! The `mkdir` tool: input schema, description, and handler.
 
 use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
+use tokio::fs;
+
+use crate::paths::resolve_inside_root;
 
 use super::PkbManager;
 
@@ -19,7 +22,21 @@ impl PkbManager {
         An existing file in place of a required directory is an error. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root.")]
-    fn mkdir(&self, Parameters(MkdirParams { path, parents }): Parameters<MkdirParams>) -> String {
-        "TODO".to_owned()
+    async fn mkdir(
+        &self,
+        Parameters(MkdirParams { path, parents }): Parameters<MkdirParams>,
+    ) -> String {
+        let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &path) else {
+            return "Unsupported <path>".to_owned();
+        };
+        let result = if parents.unwrap_or(false) {
+            fs::create_dir_all(&target).await
+        } else {
+            fs::create_dir(&target).await
+        };
+        match result {
+            Ok(()) => format!("Created {path}"),
+            Err(error) => error.to_string(),
+        }
     }
 }
