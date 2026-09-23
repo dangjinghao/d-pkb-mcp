@@ -3,6 +3,7 @@ mod hash;
 mod paths;
 mod rg;
 mod server;
+mod staging;
 mod tools;
 
 use anyhow::Context;

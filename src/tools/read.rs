@@ -24,7 +24,6 @@ struct ReadParams {
 struct ReadOutput {
     content: String,
     hash: String,
-    file_path: String,
     is_truncated: bool,
 }
 
@@ -58,8 +57,8 @@ impl PkbManager {
         <start> is a 1-based, inclusive line number and defaults to 1 when omitted or null. \
         <limit> defaults to DEFAULT_LIMIT lines when omitted or null; 0 means no limit. \
         Indicate whether results are truncated and the range of lines shown when more content remains. \
-        As structured content, return the returned text as `content`, the SHA-256 hex digest of the \
-        entire file as `hash` (independent of <start> and <limit>), the requested path as `file_path`, \
+        As structured content, return `content` (the selected lines, without the truncation marker), \
+        the SHA-256 hex digest of the entire file as `hash` (independent of <start> and <limit>), \
         and the truncation state as `is_truncated`. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root. \
@@ -93,7 +92,6 @@ impl PkbManager {
                 let output = ReadOutput {
                     content,
                     hash,
-                    file_path,
                     is_truncated,
                 };
                 let value = match serde_json::to_value(&output) {

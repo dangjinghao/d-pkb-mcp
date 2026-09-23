@@ -16,7 +16,7 @@ mod write;
 use rmcp::{ServerHandler, handler::server::router::tool::ToolRouter, tool_handler};
 use std::{path::PathBuf, sync::Arc};
 
-const DEFAULT_LIMIT: usize = 1024;
+const DEFAULT_LIMIT: usize = 128;
 
 #[derive(Clone)]
 pub(crate) struct PkbManager {

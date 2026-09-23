@@ -1,11 +1,8 @@
 //! The `write` tool: input schema, description, and handler.
 
-use std::{fs::Permissions, os::unix::fs::PermissionsExt};
-
 use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
-use tokio::fs;
 
-use crate::paths::resolve_inside_root;
+use crate::{paths::resolve_inside_root, staging::stage};
 
 use super::PkbManager;
 
@@ -38,37 +35,10 @@ impl PkbManager {
             return "Unsupported <file_path>".to_owned();
         };
 
-        let stem = target
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or("tmp");
-        let prefix = format!("{stem}-");
-        let suffix = target
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .map(|extension| format!(".{extension}"))
-            .unwrap_or_default();
-        let existing = fs::metadata(&target)
-            .await
-            .ok()
-            .filter(|metadata| metadata.is_file());
-        let mut builder = tempfile::Builder::new();
-        builder.prefix(&prefix).suffix(&suffix);
-        if existing.is_none() {
-            builder.permissions(Permissions::from_mode(0o666));
-        }
-        let temp = match builder.tempfile_in(self.tmp_path.as_path()) {
+        let temp = match stage(self.tmp_path.as_path(), &target, content.as_bytes()).await {
             Ok(temp) => temp,
             Err(error) => return error.to_string(),
         };
-        if let Err(error) = fs::write(temp.path(), &content).await {
-            return error.to_string();
-        }
-        if let Some(metadata) = &existing {
-            if let Err(error) = fs::set_permissions(temp.path(), metadata.permissions()).await {
-                return error.to_string();
-            }
-        }
 
         //TODO: snapshot(path)
         match temp.persist(&target) {

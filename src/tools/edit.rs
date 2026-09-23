@@ -7,7 +7,7 @@ use rmcp::{
 };
 use tokio::fs;
 
-use crate::{hash::sha256_hex, paths::resolve_inside_root};
+use crate::{hash::sha256_hex, paths::resolve_inside_root, staging::stage};
 
 use super::PkbManager;
 
@@ -71,32 +71,10 @@ impl PkbManager {
         let updated = content.replacen(&old_str, &new_str, 1);
         let after_hash = sha256_hex(updated.as_bytes());
 
-        let metadata = match fs::metadata(&target).await {
-            Ok(metadata) => metadata,
-            Err(error) => return Err(error.to_string()),
-        };
-        let stem = target
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or("tmp");
-        let prefix = format!("{stem}-");
-        let suffix = target
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .map(|extension| format!(".{extension}"))
-            .unwrap_or_default();
-        let mut builder = tempfile::Builder::new();
-        builder.prefix(&prefix).suffix(&suffix);
-        let temp = match builder.tempfile_in(self.tmp_path.as_path()) {
+        let temp = match stage(self.tmp_path.as_path(), &target, updated.as_bytes()).await {
             Ok(temp) => temp,
             Err(error) => return Err(error.to_string()),
         };
-        if let Err(error) = fs::write(temp.path(), &updated).await {
-            return Err(error.to_string());
-        }
-        if let Err(error) = fs::set_permissions(temp.path(), metadata.permissions()).await {
-            return Err(error.to_string());
-        }
 
         //TODO: snapshot(path)
         match temp.persist(&target) {
