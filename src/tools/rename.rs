@@ -70,7 +70,7 @@ impl PkbManager {
             return "Cannot move a directory into itself or one of its descendants".to_owned();
         }
 
-        //TODO: snapshort(path)
+        //TODO: snapshot(path)
         match fs::rename(&source, &destination).await {
             Ok(()) => {
                 let ret_str;
@@ -81,7 +81,7 @@ impl PkbManager {
                     ret_str = format!("Renamed {src_path} to {dst_path}");
                 }
 
-                //TODO: snapshort(path)
+                //TODO: snapshot(path)
                 ret_str
             }
             Err(error) => error.to_string(),

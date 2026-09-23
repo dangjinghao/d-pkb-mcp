@@ -5,7 +5,7 @@ My personal knowledge base MCP.
 Currently, it's just a filesystem MCP with:
 
 - automatical file snapshot operation before any modification
-- snapshort restore(undo) operation
+- snapshot restore(undo) operation
 
 ## Run
 
