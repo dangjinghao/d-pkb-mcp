@@ -10,6 +10,7 @@ use anyhow::Context;
 async fn main() -> anyhow::Result<()> {
     let args = args::Args::new().await;
     let root = args.pkb_root;
+    let tmp_path = args.tmp_path;
     let addr = args.addr;
     let metadata = tokio::fs::metadata(&root)
         .await
@@ -20,5 +21,5 @@ async fn main() -> anyhow::Result<()> {
         root.display()
     );
 
-    server::run(root, &addr).await
+    server::run(root, tmp_path, &addr).await
 }

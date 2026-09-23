@@ -22,6 +22,7 @@ chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 globset = "0.4"
 regex = "1"
+tempfile = "3"
 
 [dev-dependencies]
 cargo-husky = { version = "1.5.0", default-features = false, features = [

@@ -8,8 +8,8 @@ use rmcp::transport::streamable_http_server::{
 
 use crate::tools::PkbManager;
 
-pub(crate) async fn run(root: PathBuf, addr: &str) -> anyhow::Result<()> {
-    let manager = PkbManager::new(root);
+pub(crate) async fn run(root: PathBuf, tmp_path: PathBuf, addr: &str) -> anyhow::Result<()> {
+    let manager = PkbManager::new(root, tmp_path);
     let service = StreamableHttpService::new(
         move || Ok(manager.clone()),
         Arc::new(LocalSessionManager::default()),
