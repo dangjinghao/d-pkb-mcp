@@ -32,7 +32,7 @@ impl PkbManager {
         &self,
         Parameters(RemoveParams { path, recursive }): Parameters<RemoveParams>,
     ) -> String {
-        let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &path).await else {
+        let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &path) else {
             return "Unsupported <path>".to_owned();
         };
         if target == *self.pkb_root {

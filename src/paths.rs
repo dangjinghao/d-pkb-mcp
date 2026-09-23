@@ -3,27 +3,28 @@
 
 use std::{
     collections::VecDeque,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use tokio::{fs, io};
 
-pub(crate) async fn resolve_inside_root(root: &Path, user_path: &str) -> Option<PathBuf> {
-    let candidate = if Path::new(user_path).is_absolute() {
-        return None;
-    } else {
-        root.join(user_path)
-    };
-
-    let real_path = fs::canonicalize(&candidate).await.ok()?;
-
-    let real_root = fs::canonicalize(root).await.ok()?;
-
-    if real_path.starts_with(&real_root) {
-        Some(real_path)
-    } else {
-        None
+/// Resolve a literal path without filesystem IO; the target need not exist.
+/// `root` must already be canonicalized by startup configuration.
+pub(crate) fn resolve_inside_root(root: &Path, user_path: &str) -> Option<PathBuf> {
+    let mut relative = PathBuf::new();
+    for component in Path::new(user_path).components() {
+        match component {
+            Component::Normal(name) => relative.push(name),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !relative.pop() {
+                    return None;
+                }
+            }
+            Component::RootDir | Component::Prefix(_) => return None,
+        }
     }
+    Some(root.join(relative))
 }
 
 pub(crate) struct Walker {

@@ -95,7 +95,7 @@ impl PkbManager {
         Parameters(ListParams { dir_path, limit }): Parameters<ListParams>,
     ) -> String {
         if let Some(resolved_path) =
-            resolve_inside_root(self.pkb_root.as_path(), dir_path.as_deref().unwrap_or(".")).await
+            resolve_inside_root(self.pkb_root.as_path(), dir_path.as_deref().unwrap_or("."))
         {
             match read_dir(&resolved_path, limit.unwrap_or(DEFAULT_LIMIT)).await {
                 Ok(entries) => ll_style_output(&entries.0, entries.1).await,

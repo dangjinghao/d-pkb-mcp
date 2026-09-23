@@ -115,8 +115,7 @@ impl PkbManager {
             Err(e) => return format!("Invalid <regex_pattern>: {e}"),
         };
         let root = self.pkb_root.as_path();
-        let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")).await
-        else {
+        let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")) else {
             return "Unsupported <path>".to_owned();
         };
 

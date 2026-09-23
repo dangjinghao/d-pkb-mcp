@@ -78,8 +78,7 @@ impl PkbManager {
             limit,
         }): Parameters<ReadParams>,
     ) -> String {
-        if let Some(resolved_path) = resolve_inside_root(self.pkb_root.as_path(), &file_path).await
-        {
+        if let Some(resolved_path) = resolve_inside_root(self.pkb_root.as_path(), &file_path) {
             match read_file(
                 &resolved_path,
                 start.unwrap_or(1),
