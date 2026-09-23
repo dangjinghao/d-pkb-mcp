@@ -7,10 +7,9 @@ use rmcp::{
     model::{CallToolResult, ContentBlock},
     schemars, serde_json, tool, tool_router,
 };
-use sha2::{Digest, Sha256};
 use tokio::fs;
 
-use crate::{paths::resolve_inside_root, tools::DEFAULT_LIMIT};
+use crate::{hash::sha256_hex, paths::resolve_inside_root, tools::DEFAULT_LIMIT};
 
 use super::PkbManager;
 
@@ -37,8 +36,7 @@ async fn read_file(path: &Path, start: usize, limit: usize) -> io::Result<(Strin
         ));
     }
     let file_content = fs::read_to_string(path).await?;
-    let digest = Sha256::digest(file_content.as_bytes());
-    let hash: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    let hash = sha256_hex(file_content.as_bytes());
 
     let lines: Vec<&str> = file_content.lines().collect();
     let begin = (start - 1).min(lines.len());

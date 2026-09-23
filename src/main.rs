@@ -1,4 +1,5 @@
 mod args;
+mod hash;
 mod paths;
 mod rg;
 mod server;
