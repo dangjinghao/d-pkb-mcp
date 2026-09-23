@@ -52,6 +52,7 @@ impl PkbManager {
         let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &file_path) else {
             return Err("Unsupported <file_path>".to_owned());
         };
+        let _guard = self.mutex_lock.lock().await;
         let current = match fs::read_to_string(&target).await {
             Ok(current) => current,
             Err(error) => return Err(error.to_string()),

@@ -29,6 +29,7 @@ impl PkbManager {
         let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &path) else {
             return "Unsupported <path>".to_owned();
         };
+        let _guard = self.mutex_lock.lock().await;
         let result = if parents.unwrap_or(false) {
             fs::create_dir_all(&target).await
         } else {

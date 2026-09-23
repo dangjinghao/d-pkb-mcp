@@ -16,6 +16,7 @@ mod undo;
 
 use rmcp::{ServerHandler, handler::server::router::tool::ToolRouter, tool_handler};
 use std::{path::PathBuf, sync::Arc};
+use tokio::sync::Mutex;
 
 const DEFAULT_LIMIT: usize = 128;
 
@@ -23,6 +24,7 @@ const DEFAULT_LIMIT: usize = 128;
 pub(crate) struct PkbManager {
     pkb_root: Arc<PathBuf>,
     tmp_path: Arc<PathBuf>,
+    mutex_lock: Arc<Mutex<()>>,
 }
 
 impl PkbManager {
@@ -30,6 +32,7 @@ impl PkbManager {
         Self {
             pkb_root: Arc::new(root),
             tmp_path: Arc::new(tmp_path),
+            mutex_lock: Arc::new(Mutex::new(())),
         }
     }
 

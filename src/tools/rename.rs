@@ -66,6 +66,7 @@ impl PkbManager {
         let Some(dst) = resolve_inside_root(root, &dst_path) else {
             return Err("Unsupported <dst_path>".to_owned());
         };
+        let _guard = self.mutex_lock.lock().await;
 
         let source_metadata = match fs::metadata(&source).await {
             Ok(metadata) => metadata,

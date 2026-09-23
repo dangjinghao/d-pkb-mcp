@@ -55,6 +55,7 @@ impl PkbManager {
         let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &file_path) else {
             return Err("Unsupported <file_path>".to_owned());
         };
+        let _guard = self.mutex_lock.lock().await;
         if old_str.is_empty() {
             return Err("Invalid <old_str>: must not be empty".to_owned());
         }

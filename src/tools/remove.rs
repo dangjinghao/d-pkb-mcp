@@ -59,6 +59,7 @@ impl PkbManager {
         if target == *self.pkb_root {
             return Err("Cannot remove the PKB root".to_owned());
         }
+        let _guard = self.mutex_lock.lock().await;
         let metadata = match fs::metadata(&target).await {
             Ok(metadata) => metadata,
             Err(error) => return Err(error.to_string()),
