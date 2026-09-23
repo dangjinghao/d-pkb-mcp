@@ -10,6 +10,8 @@ pub(crate) struct Args {
     pub(crate) pkb_root: PathBuf,
     #[arg(long, default_value = "127.0.0.1:8000")]
     pub(crate) addr: String,
+    #[arg(long, default_value = "/tmp")]
+    pub(crate) tmp_path: PathBuf,
 }
 
 impl Args {
@@ -19,9 +21,15 @@ impl Args {
             .await
             .with_context(|| format!("Cannot resolve PKB root: {}", args.pkb_root.display()))
             .unwrap();
+        tokio::fs::create_dir_all(&args.tmp_path)
+            .await
+            .with_context(|| format!("Cannot create temp directory: {}", args.tmp_path.display()))
+            .unwrap();
+
         Args {
             pkb_root: root,
             addr: args.addr,
+            tmp_path: args.tmp_path,
         }
     }
 }
