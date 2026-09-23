@@ -1,9 +1,13 @@
 //! The `remove` tool: input schema, description, and handler.
 
-use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
+use rmcp::{
+    handler::server::wrapper::Parameters,
+    model::{CallToolResult, ContentBlock},
+    schemars, serde_json, tool, tool_router,
+};
 use tokio::fs;
 
-use crate::paths::resolve_inside_root;
+use crate::{hash::sha256_hex, paths::resolve_inside_root};
 
 use super::PkbManager;
 
@@ -11,6 +15,14 @@ use super::PkbManager;
 struct RemoveParams {
     path: String,
     recursive: Option<bool>,
+    if_hash: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
+#[serde(untagged)]
+enum RemoveOutput {
+    Removed { path: String }, // it is not a good return
+    HashMismatch { current_hash: String },
 }
 
 #[tool_router(router = remove_router, vis = "pub(super)")]
@@ -19,6 +31,10 @@ impl PkbManager {
         <recursive> defaults to false when omitted or null; a nonempty directory is then an error. \
         With <recursive>=true, remove a directory and its contents, like `rm -r`. \
         A missing path is an error; there is no force mode. \
+        For a regular file, proceed only when <if_hash> equals the SHA-256 hex digest of the current \
+        file content; otherwise leave the file unchanged and report a tool error with the current hash \
+        as structured content (`current_hash`). <if_hash> is required for regular-file removal and \
+        ignored for directory removal. \
         The PKB must contain only regular files and directories; behavior is undefined if symbolic links are present. \
         For regular-file removal, validate the request and save a Git snapshot before deletion, \
         then save another snapshot after deletion. If the pre-removal snapshot fails, make no changes. \
@@ -26,22 +42,53 @@ impl PkbManager {
         Record the file's root-relative path and its before/after snapshots so undo can restore it \
         using the original path even when the file no longer exists. \
         Directory removal, including recursive removal, has no recovery guarantee. \
+        Return the removed root-relative path as structured content (`path`). \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
-        Reject removing the PKB root and paths outside it.")]
+        Reject removing the PKB root and paths outside it.",
+        output_schema = rmcp::handler::server::tool::schema_for_output::<RemoveOutput>()
+    )]
     async fn remove(
         &self,
-        Parameters(RemoveParams { path, recursive }): Parameters<RemoveParams>,
-    ) -> String {
+        Parameters(RemoveParams {
+            path,
+            recursive,
+            if_hash,
+        }): Parameters<RemoveParams>,
+    ) -> Result<CallToolResult, String> {
         let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &path) else {
-            return "Unsupported <path>".to_owned();
+            return Err("Unsupported <path>".to_owned());
         };
         if target == *self.pkb_root {
-            return "Cannot remove the PKB root".to_owned();
+            return Err("Cannot remove the PKB root".to_owned());
         }
         let metadata = match fs::metadata(&target).await {
             Ok(metadata) => metadata,
-            Err(error) => return error.to_string(),
+            Err(error) => return Err(error.to_string()),
         };
+
+        if metadata.is_file() {
+            let Some(if_hash) = if_hash else {
+                return Err("Invalid <if_hash>: required for regular-file removal".to_owned());
+            };
+            let content = match fs::read(&target).await {
+                Ok(content) => content,
+                Err(error) => return Err(error.to_string()),
+            };
+            let current_hash = sha256_hex(&content);
+            if current_hash != if_hash {
+                let message = format!(
+                    "Invalid <if_hash>: does not match the current file content (current hash: {current_hash})"
+                );
+                let output = RemoveOutput::HashMismatch { current_hash };
+                let value = match serde_json::to_value(&output) {
+                    Ok(value) => value,
+                    Err(error) => return Err(error.to_string()),
+                };
+                let mut result = CallToolResult::error(vec![ContentBlock::text(message)]);
+                result.structured_content = Some(value);
+                return Ok(result);
+            }
+        }
 
         //TODO: snapshot(path)
         let result = if metadata.is_dir() {
@@ -57,9 +104,22 @@ impl PkbManager {
         match result {
             Ok(()) => {
                 //TODO: snapshot(path)
-                format!("Removed {path}")
+                let message = format!("Removed {path}");
+                let landed = target
+                    .strip_prefix(self.pkb_root.as_path())
+                    .unwrap_or(&target);
+                let output = RemoveOutput::Removed {
+                    path: landed.to_string_lossy().into_owned(),
+                };
+                let value = match serde_json::to_value(&output) {
+                    Ok(value) => value,
+                    Err(error) => return Err(error.to_string()),
+                };
+                let mut result = CallToolResult::success(vec![ContentBlock::text(message)]);
+                result.structured_content = Some(value);
+                Ok(result)
             }
-            Err(error) => error.to_string(),
+            Err(error) => Err(error.to_string()),
         }
     }
 }
