@@ -1,3 +1,6 @@
+//! Paths assume a PKB containing only regular files and directories.
+//! Behavior is undefined if symbolic links are present; no special handling is provided.
+
 use std::{
     collections::VecDeque,
     path::{Path, PathBuf},
