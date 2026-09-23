@@ -2,11 +2,13 @@
 
 use std::{io, path::Path};
 
-use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
-use tokio::{
-    fs::File,
-    io::{AsyncBufReadExt, BufReader},
+use rmcp::{
+    handler::server::wrapper::Parameters,
+    model::{CallToolResult, ContentBlock},
+    schemars, serde_json, tool, tool_router,
 };
+use sha2::{Digest, Sha256};
+use tokio::fs;
 
 use crate::{paths::resolve_inside_root, tools::DEFAULT_LIMIT};
 
@@ -19,44 +21,36 @@ struct ReadParams {
     start: Option<usize>,
 }
 
-async fn read_file(path: &Path, start: usize, limit: usize) -> io::Result<Vec<String>> {
+#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
+struct ReadOutput {
+    content: String,
+    hash: String,
+    file_path: String,
+    is_truncated: bool,
+}
+
+async fn read_file(path: &Path, start: usize, limit: usize) -> io::Result<(String, bool, String)> {
     if start == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "start must be at least 1",
         ));
     }
-    let file = File::open(path).await?;
-    let mut lines = BufReader::new(file).lines();
-    let mut output = Vec::new();
+    let file_content = fs::read_to_string(path).await?;
+    let digest = Sha256::digest(file_content.as_bytes());
+    let hash: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
 
-    // skip first <start> lines
-    for _ in 1..start {
-        if lines.next_line().await?.is_none() {
-            return Ok(output);
-        }
-    }
-    if limit == 0 {
-        while let Some(line) = lines.next_line().await? {
-            output.push(line);
-        }
+    let lines: Vec<&str> = file_content.lines().collect();
+    let begin = (start - 1).min(lines.len());
+    let end = if limit == 0 {
+        lines.len()
     } else {
-        while output.len() < limit {
-            match lines.next_line().await? {
-                Some(line) => output.push(line),
-                None => break,
-            }
-        }
-        if lines.next_line().await?.is_some() {
-            output.push(format!(
-                "[truncated: showing line {} ~ {}]",
-                start,
-                start + limit - 1
-            ));
-        }
-    }
+        begin.saturating_add(limit).min(lines.len())
+    };
+    let content = lines[begin..end].join("\n");
+    let is_truncated = limit > 0 && end < lines.len();
 
-    Ok(output)
+    Ok((content, is_truncated, hash))
 }
 
 #[tool_router(router = read_router, vis = "pub(super)")]
@@ -66,9 +60,13 @@ impl PkbManager {
         <start> is a 1-based, inclusive line number and defaults to 1 when omitted or null. \
         <limit> defaults to DEFAULT_LIMIT lines when omitted or null; 0 means no limit. \
         Indicate whether results are truncated and the range of lines shown when more content remains. \
+        As structured content, return the returned text as `content`, the SHA-256 hex digest of the \
+        entire file as `hash` (independent of <start> and <limit>), the requested path as `file_path`, \
+        and the truncation state as `is_truncated`. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root. \
-        Report failures as tool errors."
+        Report failures as tool errors.",
+        output_schema = rmcp::handler::server::tool::schema_for_output::<ReadOutput>()
     )]
     async fn read(
         &self,
@@ -77,20 +75,38 @@ impl PkbManager {
             start,
             limit,
         }): Parameters<ReadParams>,
-    ) -> String {
-        if let Some(resolved_path) = resolve_inside_root(self.pkb_root.as_path(), &file_path) {
-            match read_file(
-                &resolved_path,
-                start.unwrap_or(1),
-                limit.unwrap_or(DEFAULT_LIMIT),
-            )
-            .await
-            {
-                Ok(lines) => lines.join("\n"),
-                Err(e) => e.to_string(),
+    ) -> Result<CallToolResult, String> {
+        let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &file_path) else {
+            return Err("Unsupported <file_path>".to_owned());
+        };
+        let start = start.unwrap_or(1);
+        let limit = limit.unwrap_or(DEFAULT_LIMIT);
+
+        match read_file(&target, start, limit).await {
+            Ok((content, is_truncated, hash)) => {
+                let mut text = content.clone();
+                if is_truncated {
+                    text.push_str(&format!(
+                        "\n[truncated: showing line {} ~ {} ]",
+                        start,
+                        start + limit - 1
+                    ));
+                }
+                let output = ReadOutput {
+                    content,
+                    hash,
+                    file_path,
+                    is_truncated,
+                };
+                let value = match serde_json::to_value(&output) {
+                    Ok(value) => value,
+                    Err(error) => return Err(error.to_string()),
+                };
+                let mut result = CallToolResult::success(vec![ContentBlock::text(text)]);
+                result.structured_content = Some(value);
+                Ok(result)
             }
-        } else {
-            "Unsupported <file_path>".to_owned()
+            Err(error) => Err(error.to_string()),
         }
     }
 }
