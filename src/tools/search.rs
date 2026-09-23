@@ -96,8 +96,10 @@ impl PkbManager {
         with its file path, 1-based line number, and text. \
         <limit> defaults to DEFAULT_LIMIT matching lines in total when omitted or null, not files \
         or individual matches; 0 means no limit. Indicate whether results are truncated. \
-        No matches is a successful empty result. Report invalid regular expressions and other failures \
-        as tool errors. Relative paths are resolved from the PKB root. \
+        No matches is a successful empty result. \
+        Skip files that cannot be opened, and stop reading a file at its first non-UTF-8 line. \
+        Report invalid regular expressions and other failures as tool errors. \
+        Relative paths are resolved from the PKB root. \
         <path> defaults to the PKB root when omitted or null. \
         Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root."

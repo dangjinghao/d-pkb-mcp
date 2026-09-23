@@ -23,7 +23,6 @@ impl PkbManager {
         Report a tool error if the resulting destination already exists, the source is missing, \
         or a directory would be moved into itself or one of its descendants. \
         Do not merge directories or overwrite existing entries. \
-        Do not create snapshot commits or an undo record for this operation. \
         Correct an accidental move by renaming the entry back. Later full-PKB snapshots may capture the move. \
         Snapshot history is path-based; the destination does not inherit the source's undo history. \
         To recover an older file version, move it back and consult its original path's history, \

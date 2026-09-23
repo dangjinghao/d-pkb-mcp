@@ -32,7 +32,7 @@ impl PkbManager {
         description = "Recursively find files under <path> by running ripgrep (`rg --files`), a faster \
         alternative to `find` on large knowledge bases. \
         Match <glob_pattern> with rg's glob syntax: a pattern without `/` matches a basename at any \
-        depth, while a pattern containing `/` is matched against the path relative to <path>. \
+        depth, while a pattern containing `/` is matched against the path relative to the PKB root. \
         Only <glob_pattern> is interpreted as a glob; <path> is literal and defaults to the PKB root \
         when omitted or null. \
         Like `find`, this includes hidden entries and does not honor ignore files such as \

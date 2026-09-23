@@ -49,7 +49,7 @@ async fn read_file(path: &Path, start: usize, limit: usize) -> io::Result<Vec<St
         }
         if lines.next_line().await?.is_some() {
             output.push(format!(
-                "[truncated: showing line {} ~ {} ]",
+                "[truncated: showing line {} ~ {}]",
                 start,
                 start + limit - 1
             ));
@@ -65,7 +65,7 @@ impl PkbManager {
         description = "Read the text file at <file_path>, like `cat` with an optional line range. \
         <start> is a 1-based, inclusive line number and defaults to 1 when omitted or null. \
         <limit> defaults to DEFAULT_LIMIT lines when omitted or null; 0 means no limit. \
-        Indicate whether results are truncated and provide the next line number when more content remains. \
+        Indicate whether results are truncated and the range of lines shown when more content remains. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root. \
         Report failures as tool errors."
