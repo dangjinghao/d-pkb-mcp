@@ -1,5 +1,6 @@
 //! MCP tool modules and their combined router.
 
+mod create;
 mod edit;
 mod find;
 mod find_rg;
@@ -35,6 +36,7 @@ impl PkbManager {
     fn tool_router() -> ToolRouter<Self> {
         Self::list_router()
             + Self::read_router()
+            + Self::create_router()
             + Self::write_router()
             + Self::edit_router()
             + Self::mkdir_router()
