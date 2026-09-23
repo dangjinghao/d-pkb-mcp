@@ -12,7 +12,7 @@ struct UndoParams {
 #[tool_router(router = undo_router, vis = "pub(super)")]
 impl PkbManager {
     #[tool(
-        description = "Restore the **file** at <path> from a process-local Git snapshot. \
+        description = "(TODO)Restore the **file** at <path> from a process-local Git snapshot. \
         When <snapshot> is omitted or null, use the latest Git commit changing this path \
         to identify the recorded operation and restore its before state, including a previous undo. \
         If that change records external edits rather than an operation on this path, report: \
