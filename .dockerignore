@@ -1,0 +1,5 @@
+.git
+.devcontainer
+.cargo-husky
+target
+AGENTS.md
