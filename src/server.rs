@@ -13,7 +13,7 @@ pub(crate) async fn run(root: PathBuf, tmp_path: PathBuf, addr: &str) -> anyhow:
     let service = StreamableHttpService::new(
         move || Ok(manager.clone()),
         Arc::new(LocalSessionManager::default()),
-        StreamableHttpServerConfig::default(),
+        StreamableHttpServerConfig::default().disable_allowed_hosts(),
     );
 
     let router = axum::Router::new().nest_service("/mcp", service);
