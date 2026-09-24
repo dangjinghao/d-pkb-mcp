@@ -15,4 +15,4 @@ COPY --from=builder /app/target/release/d-pkb-mcp /usr/local/bin/d-pkb-mcp
 
 EXPOSE 8000
 ENTRYPOINT ["/usr/local/bin/d-pkb-mcp"]
-CMD ["--pkb-root", "/data/D", "--tmp-path", "/data/.tmp", "--addr", "0.0.0.0:8000"]
+CMD ["--pkb-root", "/data", "--tmp-path", "/data/.tmp", "--addr", "0.0.0.0:8000"]

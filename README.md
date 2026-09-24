@@ -21,28 +21,20 @@ Build the image:
 docker build -t d-pkb-mcp:local .
 ```
 
-Arrange the host directories under one parent, for example:
-
-```text
-/srv/pkb-data/
-├── D/       # PKB files
-└── .tmp/    # Temporary files used while writing
-```
-
-Run the container with that **one parent directory** mounted at `/data`:
+Mount the PKB volume directly at `/data`:
 
 ```sh
 docker run --rm --name d-pkb-mcp \
-  --mount type=bind,src=/srv/pkb-data,dst=/data \
+  -v content:/data \
   -p 127.0.0.1:8000:8000 \
   d-pkb-mcp:local
 ```
 
-The image starts with `--pkb-root /data/D --tmp-path /data/.tmp --addr 0.0.0.0:8000`.
-Change the host path to the parent containing your PKB and temporary directory.
-Both directories must be **in the same bind mount** : file updates stage content in
-`/data/.tmp` and rename it into `/data/D`, which fails across mount points. The
-server creates `.tmp` if it does not exist.
+`content` is a Docker named volume. To use an existing host directory, replace it
+with a path, for example `-v /srv/pkb/D:/data`.
+
+The image starts with `--pkb-root /data --tmp-path /data/.tmp --addr 0.0.0.0:8000`.
+The server creates `/data/.tmp` if needed and stages writes there before renaming them into the PKB. This keeps both paths in the same mount, which is required for atomic replacement.
 
 On a standard rootful Linux Docker daemon, the container runs as root by default,
 so a root-owned PKB does not require a UID/GID mapping. Files created by the service
