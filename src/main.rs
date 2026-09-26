@@ -3,6 +3,7 @@ mod hash;
 mod paths;
 mod rg;
 mod server;
+mod snapshot;
 mod staging;
 mod tools;
 
@@ -22,6 +23,13 @@ async fn main() -> anyhow::Result<()> {
         "PKB root must be a directory: {}",
         root.display()
     );
+
+    if !args.no_snapshot {
+        snapshot::init(&root, &tmp_path)
+            .await
+            .context("Cannot initialize snapshots")?;
+        snapshot::snapshot("init").await?;
+    }
 
     server::run(root, tmp_path, &addr).await
 }

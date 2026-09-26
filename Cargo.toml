@@ -25,6 +25,7 @@ globset = "0.4"
 regex = "1"
 sha2 = "0.10"
 tempfile = "3"
+git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
 
 [dev-dependencies]
 cargo-husky = { version = "1.5.0", default-features = false, features = [

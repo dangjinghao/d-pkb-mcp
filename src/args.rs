@@ -12,6 +12,9 @@ pub(crate) struct Args {
     pub(crate) addr: String,
     #[arg(long, default_value = "/tmp")]
     pub(crate) tmp_path: PathBuf,
+    /// Disable initialization of the process-local snapshot repository.
+    #[arg(long)]
+    pub(crate) no_snapshot: bool,
 }
 
 impl Args {
@@ -30,6 +33,7 @@ impl Args {
             pkb_root: root,
             addr: args.addr,
             tmp_path: args.tmp_path,
+            no_snapshot: args.no_snapshot,
         }
     }
 }
