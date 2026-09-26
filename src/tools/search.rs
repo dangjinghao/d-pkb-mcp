@@ -9,10 +9,7 @@ use tokio::{
     io::{self, AsyncBufReadExt, BufReader},
 };
 
-use crate::{
-    paths::{Walker, resolve_inside_root},
-    tools::DEFAULT_LIMIT,
-};
+use crate::{paths::PkbPath, tools::DEFAULT_LIMIT};
 
 use super::PkbManager;
 
@@ -31,11 +28,12 @@ struct LineMatch {
 
 async fn collect_matches(
     start: PathBuf,
+    paths: &PkbPath,
     regex: &Regex,
     limit: usize,
 ) -> io::Result<(Vec<LineMatch>, bool)> {
     let mut matches = Vec::new();
-    let mut walker = Walker::new(start).await?;
+    let mut walker = paths.walk(start).await?;
 
     while let Some(path) = walker.next().await? {
         let Ok(file) = File::open(&path).await else {
@@ -91,7 +89,8 @@ fn format_matches(root: &Path, matches: &[LineMatch], truncated: bool) -> String
 #[tool_router(router = search_router, vis = "pub(super)")]
 impl PkbManager {
     #[tool(
-        description = "Search text-file contents under <path> recursively, like `grep -r -n`. \
+        description = "The configured temporary directory inside the PKB is reserved: direct access is denied and traversal skips it. \
+        Search text-file contents under <path> recursively, like `grep -r -n`. \
         Interpret <regex_pattern> as a regular expression and return each matching line \
         with its file path, 1-based line number, and text. \
         <limit> defaults to DEFAULT_LIMIT matching lines in total when omitted or null, not files \
@@ -116,12 +115,23 @@ impl PkbManager {
             Ok(regex) => regex,
             Err(e) => return format!("Invalid <regex_pattern>: {e}"),
         };
-        let root = self.pkb_root.as_path();
-        let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")) else {
-            return "Unsupported <path>".to_owned();
+        let root = self.paths.root();
+        let resolved_path = match self
+            .paths
+            .resolve_inside_root(path.as_deref().unwrap_or("."))
+        {
+            Ok(path) => path,
+            Err(error) => return error,
         };
 
-        match collect_matches(resolved_path, &regex, limit.unwrap_or(DEFAULT_LIMIT)).await {
+        match collect_matches(
+            resolved_path,
+            &self.paths,
+            &regex,
+            limit.unwrap_or(DEFAULT_LIMIT),
+        )
+        .await
+        {
             Ok((matches, truncated)) => format_matches(root, &matches, truncated),
             Err(e) => e.to_string(),
         }

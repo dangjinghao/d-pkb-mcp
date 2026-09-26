@@ -32,7 +32,10 @@ impl Args {
         Args {
             pkb_root: root,
             addr: args.addr,
-            tmp_path: args.tmp_path,
+            tmp_path: tokio::fs::canonicalize(&args.tmp_path)
+                .await
+                .context("Cannot resolve temporary directory")
+                .unwrap(),
             no_snapshot: args.no_snapshot,
         }
     }

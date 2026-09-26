@@ -7,7 +7,7 @@ use rmcp::{
 };
 use tokio::fs;
 
-use crate::{hash::sha256_hex, paths::resolve_inside_root, staging::stage};
+use crate::{hash::sha256_hex, staging::stage};
 
 use super::PkbManager;
 use crate::snapshot::snapshot_if_enabled;
@@ -29,7 +29,8 @@ struct EditOutput {
 #[tool_router(router = edit_router, vis = "pub(super)")]
 impl PkbManager {
     #[tool(
-        description = "Replace exactly one literal occurrence of <old_str> with <new_str> in <file_path>. \
+        description = "The configured temporary directory inside the PKB is reserved: direct access is denied. \
+        Replace exactly one literal occurrence of <old_str> with <new_str> in <file_path>. \
         This is a literal string replacement, not a regular-expression substitution. \
         <old_str> must be nonempty and must match exactly once; otherwise leave the file unchanged \
         and report a tool error. \
@@ -54,8 +55,9 @@ impl PkbManager {
             if_hash,
         }): Parameters<EditParams>,
     ) -> Result<CallToolResult, String> {
-        let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &file_path) else {
-            return Err("Unsupported <file_path>".to_owned());
+        let target = match self.paths.resolve_inside_root(&file_path) {
+            Ok(path) => path,
+            Err(error) => return Err(error),
         };
         let _guard = self.mutex_lock.lock().await;
         if old_str.is_empty() {
@@ -84,7 +86,7 @@ impl PkbManager {
         let updated = content.replacen(&old_str, &new_str, 1);
         let after_hash = sha256_hex(updated.as_bytes());
 
-        let temp = match stage(self.tmp_path.as_path(), &target, updated.as_bytes()).await {
+        let temp = match stage(self.paths.tmp_path(), &target, updated.as_bytes()).await {
             Ok(temp) => temp,
             Err(error) => return Err(error.to_string()),
         };

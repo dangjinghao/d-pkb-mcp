@@ -23,16 +23,14 @@ const DEFAULT_LIMIT: usize = 128;
 
 #[derive(Clone)]
 pub(crate) struct PkbManager {
-    pkb_root: Arc<PathBuf>,
-    tmp_path: Arc<PathBuf>,
+    paths: Arc<crate::paths::PkbPath>,
     mutex_lock: Arc<Mutex<()>>,
 }
 
 impl PkbManager {
     pub(crate) fn new(root: PathBuf, tmp_path: PathBuf) -> Self {
         Self {
-            pkb_root: Arc::new(root),
-            tmp_path: Arc::new(tmp_path),
+            paths: Arc::new(crate::paths::PkbPath::new(root, tmp_path)),
             mutex_lock: Arc::new(Mutex::new(())),
         }
     }

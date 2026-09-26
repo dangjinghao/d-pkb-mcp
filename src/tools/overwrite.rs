@@ -7,7 +7,7 @@ use rmcp::{
 };
 use tokio::fs;
 
-use crate::{hash::sha256_hex, paths::resolve_inside_root, staging::stage};
+use crate::{hash::sha256_hex, staging::stage};
 
 use super::PkbManager;
 use crate::snapshot::snapshot_if_enabled;
@@ -27,7 +27,8 @@ struct OverwriteOutput {
 #[tool_router(router = overwrite_router, vis = "pub(super)")]
 impl PkbManager {
     #[tool(
-        description = "Overwrite the existing file at <file_path> with <content>, replacing its entire content. \
+        description = "The configured temporary directory inside the PKB is reserved: direct access is denied. \
+        Overwrite the existing file at <file_path> with <content>, replacing its entire content. \
         The target must already exist; a missing path is an error and nothing is created. \
         Proceed only when <if_hash> equals the SHA-256 hex digest of the current file content; \
         otherwise leave the file unchanged and report a tool error whose text is \
@@ -48,8 +49,9 @@ impl PkbManager {
             if_hash,
         }): Parameters<OverwriteParams>,
     ) -> Result<CallToolResult, String> {
-        let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &file_path) else {
-            return Err("Unsupported <file_path>".to_owned());
+        let target = match self.paths.resolve_inside_root(&file_path) {
+            Ok(path) => path,
+            Err(error) => return Err(error),
         };
         let _guard = self.mutex_lock.lock().await;
         let current = match fs::read_to_string(&target).await {
@@ -61,7 +63,7 @@ impl PkbManager {
             return Err(format!("sha mismatch, current_sha: {current_hash}"));
         }
         let after_hash = sha256_hex(content.as_bytes());
-        let temp = match stage(self.tmp_path.as_path(), &target, content.as_bytes()).await {
+        let temp = match stage(self.paths.tmp_path(), &target, content.as_bytes()).await {
             Ok(temp) => temp,
             Err(error) => return Err(error.to_string()),
         };

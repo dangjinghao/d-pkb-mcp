@@ -9,7 +9,7 @@ use rmcp::{
 };
 use tokio::fs;
 
-use crate::{hash::sha256_hex, paths::resolve_inside_root, tools::DEFAULT_LIMIT};
+use crate::{hash::sha256_hex, tools::DEFAULT_LIMIT};
 
 use super::PkbManager;
 
@@ -52,7 +52,8 @@ async fn read_file(path: &Path, start: usize, limit: usize) -> io::Result<(Strin
 #[tool_router(router = read_router, vis = "pub(super)")]
 impl PkbManager {
     #[tool(
-        description = "Read the text file at <file_path>, like `cat` with an optional line range. \
+        description = "The configured temporary directory inside the PKB is reserved: direct access is denied. \
+        Read the text file at <file_path>, like `cat` with an optional line range. \
         <start> is a 1-based, inclusive line number and defaults to 1 when omitted or null. \
         <limit> defaults to DEFAULT_LIMIT lines when omitted or null; 0 means no limit. \
         Return the selected text exactly as in the file, including line endings; for a full read it \
@@ -73,8 +74,9 @@ impl PkbManager {
             limit,
         }): Parameters<ReadParams>,
     ) -> Result<CallToolResult, String> {
-        let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &file_path) else {
-            return Err("Unsupported <file_path>".to_owned());
+        let target = match self.paths.resolve_inside_root(&file_path) {
+            Ok(path) => path,
+            Err(error) => return Err(error),
         };
         let start = start.unwrap_or(1);
         let limit = limit.unwrap_or(DEFAULT_LIMIT);

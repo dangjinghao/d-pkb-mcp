@@ -7,7 +7,7 @@ use rmcp::{
 };
 use tokio::fs;
 
-use crate::{hash::sha256_hex, paths::resolve_inside_root};
+use crate::hash::sha256_hex;
 
 use super::PkbManager;
 use crate::snapshot::snapshot_if_enabled;
@@ -26,7 +26,8 @@ struct RemoveOutput {
 
 #[tool_router(router = remove_router, vis = "pub(super)")]
 impl PkbManager {
-    #[tool(description = "Remove a file or an empty directory at <path>. \
+    #[tool(description = "The configured temporary directory inside the PKB is reserved: direct access is denied. Do not remove or move its ancestors. \
+        Remove a file or an empty directory at <path>. \
         <recursive> defaults to false when omitted or null; a nonempty directory is then an error. \
         With <recursive>=true, remove a directory and its contents, like `rm -r`. \
         A missing path is an error; there is no force mode. \
@@ -51,13 +52,18 @@ impl PkbManager {
             if_hash,
         }): Parameters<RemoveParams>,
     ) -> Result<CallToolResult, String> {
-        let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &path) else {
-            return Err("Unsupported <path>".to_owned());
+        let target = match self.paths.resolve_inside_root(&path) {
+            Ok(path) => path,
+            Err(error) => return Err(error),
         };
-        if target == *self.pkb_root {
+        if target == *self.paths.root() {
             return Err("Cannot remove the PKB root".to_owned());
         }
         let _guard = self.mutex_lock.lock().await;
+        if self.paths.contains_reserved_path(&target) {
+            return Err(crate::paths::reserved_path_error(&target));
+        }
+
         let metadata = match fs::metadata(&target).await {
             Ok(metadata) => metadata,
             Err(error) => return Err(error.to_string()),
@@ -100,9 +106,7 @@ impl PkbManager {
                         format!("Remove completed, but post-operation snapshot failed: {error}")
                     })?;
                 let message = format!("Removed {path}");
-                let landed = target
-                    .strip_prefix(self.pkb_root.as_path())
-                    .unwrap_or(&target);
+                let landed = target.strip_prefix(self.paths.root()).unwrap_or(&target);
                 let output = RemoveOutput {
                     path: landed.to_string_lossy().into_owned(),
                 };

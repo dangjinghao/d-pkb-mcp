@@ -6,10 +6,7 @@ use globset::{Glob, GlobMatcher};
 use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
 use tokio::io;
 
-use crate::{
-    paths::{Walker, resolve_inside_root},
-    tools::DEFAULT_LIMIT,
-};
+use crate::{paths::PkbPath, tools::DEFAULT_LIMIT};
 
 use super::PkbManager;
 
@@ -22,12 +19,13 @@ struct FindParams {
 
 async fn collect_matches(
     start: PathBuf,
+    paths: &PkbPath,
     matcher: &GlobMatcher,
     limit: usize,
 ) -> io::Result<(Vec<PathBuf>, bool)> {
     let mut matches = Vec::new();
     let mut truncated = false;
-    let mut walker = Walker::new(start).await?;
+    let mut walker = paths.walk(start).await?;
 
     while let Some(path) = walker.next().await? {
         let matched = path.file_name().is_some_and(|name| matcher.is_match(name));
@@ -65,7 +63,8 @@ fn format_matches(root: &Path, matches: &[PathBuf], truncated: bool) -> String {
 #[tool_router(router = find_router, vis = "pub(super)")]
 impl PkbManager {
     #[tool(
-        description = "Recursively find files and directories under <path>, like `find` with `-name`. \
+        description = "The configured temporary directory inside the PKB is reserved: direct access is denied and traversal skips it. \
+        Recursively find files and directories under <path>, like `find` with `-name`. \
         Match <glob_pattern> against each entry's basename, not its full relative path. \
         Only <glob_pattern> is interpreted as a glob; <path> is literal and defaults to the PKB root \
         when omitted or null. \
@@ -87,12 +86,23 @@ impl PkbManager {
             Ok(glob) => glob.compile_matcher(),
             Err(e) => return format!("Invalid <glob_pattern>: {e}"),
         };
-        let root = self.pkb_root.as_path();
-        let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")) else {
-            return "Unsupported <path>".to_owned();
+        let root = self.paths.root();
+        let resolved_path = match self
+            .paths
+            .resolve_inside_root(path.as_deref().unwrap_or("."))
+        {
+            Ok(path) => path,
+            Err(error) => return error,
         };
 
-        match collect_matches(resolved_path, &matcher, limit.unwrap_or(DEFAULT_LIMIT)).await {
+        match collect_matches(
+            resolved_path,
+            &self.paths,
+            &matcher,
+            limit.unwrap_or(DEFAULT_LIMIT),
+        )
+        .await
+        {
             Ok((matches, truncated)) => format_matches(root, &matches, truncated),
             Err(e) => e.to_string(),
         }

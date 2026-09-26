@@ -4,7 +4,7 @@ use std::ffi::OsString;
 
 use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
 
-use crate::{paths::resolve_inside_root, rg, tools::DEFAULT_LIMIT};
+use crate::{rg, tools::DEFAULT_LIMIT};
 
 use super::PkbManager;
 
@@ -29,7 +29,8 @@ fn output_text(output: rg::Output) -> String {
 #[tool_router(router = find_rg_router, vis = "pub(super)")]
 impl PkbManager {
     #[tool(
-        description = "Recursively find files under <path> by running ripgrep (`rg --files`), a faster \
+        description = "The configured temporary directory inside the PKB is reserved: direct access is denied and traversal skips it. \
+        Recursively find files under <path> by running ripgrep (`rg --files`), a faster \
         alternative to `find` on large knowledge bases. \
         Match <glob_pattern> with rg's glob syntax: a pattern without `/` matches a basename at any \
         depth, while a pattern containing `/` is matched against the path relative to the PKB root. \
@@ -53,9 +54,13 @@ impl PkbManager {
             limit,
         }): Parameters<FindRgParams>,
     ) -> String {
-        let root = self.pkb_root.as_path();
-        let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")) else {
-            return "Unsupported <path>".to_owned();
+        let root = self.paths.root();
+        let resolved_path = match self
+            .paths
+            .resolve_inside_root(path.as_deref().unwrap_or("."))
+        {
+            Ok(path) => path,
+            Err(error) => return error,
         };
 
         let mut args = vec![
@@ -66,6 +71,7 @@ impl PkbManager {
             OsString::from("--sort"),
             OsString::from("path"),
             OsString::from(format!("--glob={glob_pattern}")),
+            OsString::from("--"),
         ];
 
         let relative_path = resolved_path.strip_prefix(root).unwrap_or(&resolved_path);
@@ -73,7 +79,14 @@ impl PkbManager {
             args.push(relative_path.as_os_str().to_os_string());
         }
 
-        match rg::run(root, args, limit.unwrap_or(DEFAULT_LIMIT)).await {
+        match rg::run(
+            root,
+            args,
+            limit.unwrap_or(DEFAULT_LIMIT),
+            self.paths.excluded_path(),
+        )
+        .await
+        {
             Ok(output) => output_text(output),
             Err(e) => e,
         }

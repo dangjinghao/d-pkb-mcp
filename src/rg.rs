@@ -14,7 +14,38 @@ pub(crate) struct Output {
     pub(crate) truncated: bool,
 }
 
-pub(crate) async fn run(cwd: &Path, args: Vec<OsString>, limit: usize) -> Result<Output, String> {
+/// Add an anchored literal exclusion after user globs, before positional arguments.
+fn exclude_path(root: &Path, excluded: &Path, args: &mut Vec<OsString>) -> Result<(), String> {
+    let relative = excluded
+        .strip_prefix(root)
+        .map_err(|error| error.to_string())?;
+    let relative = relative
+        .to_str()
+        .ok_or("Temporary path must be valid UTF-8 for ripgrep")?;
+    let mut glob = String::from("--glob=!/");
+    for ch in relative.chars() {
+        if matches!(ch, '*' | '?' | '[' | ']' | '{' | '}' | '\\') {
+            glob.push('\\');
+        }
+        glob.push(ch);
+    }
+    let index = args
+        .iter()
+        .position(|arg| arg == "--")
+        .unwrap_or(args.len());
+    args.insert(index, glob.into());
+    Ok(())
+}
+
+pub(crate) async fn run(
+    cwd: &Path,
+    mut args: Vec<OsString>,
+    limit: usize,
+    exclude: Option<&Path>,
+) -> Result<Output, String> {
+    if let Some(path) = exclude {
+        exclude_path(cwd, path, &mut args)?;
+    }
     let mut child = Command::new("rg")
         .current_dir(cwd)
         .args(args)

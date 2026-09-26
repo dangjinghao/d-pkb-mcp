@@ -9,7 +9,7 @@ use rmcp::{
 };
 use tokio::fs;
 
-use crate::{hash::sha256_hex, paths::resolve_inside_root, snapshot, staging::stage};
+use crate::{hash::sha256_hex, snapshot, staging::stage};
 
 use super::PkbManager;
 
@@ -23,7 +23,8 @@ struct UndoParams {
 #[tool_router(router = undo_router, vis = "pub(super)")]
 impl PkbManager {
     #[tool(
-        description = "Restore the file at <path> from a process-local Git snapshot. \
+        description = "The configured temporary directory inside the PKB is reserved: direct access is denied. \
+        Restore the file at <path> from a process-local Git snapshot. \
         For an existing file, <if_hash> is required and must match its current SHA-256 digest; \
         otherwise leave it unchanged and report a tool error. A hash mismatch reports \
         `sha mismatch, current_sha: <sha256 hex>`. For a missing path, <if_hash> is ignored. \
@@ -51,10 +52,9 @@ impl PkbManager {
             snapshot: selected,
         }): Parameters<UndoParams>,
     ) -> Result<CallToolResult, String> {
-        let root = self.pkb_root.as_path();
-        let target =
-            resolve_inside_root(root, &path).ok_or_else(|| "Unsupported <path>".to_owned())?;
-        if target == *self.pkb_root {
+        let root = self.paths.root();
+        let target = self.paths.resolve_inside_root(&path)?;
+        if target == *self.paths.root() {
             return Err("Cannot restore the PKB root".to_owned());
         }
         let _guard = self.mutex_lock.lock().await;
@@ -81,7 +81,7 @@ impl PkbManager {
             .map_err(|error| error.to_string())?;
         let temp = match content {
             Some(content) => Some(
-                stage(self.tmp_path.as_path(), &target, &content)
+                stage(self.paths.tmp_path(), &target, &content)
                     .await
                     .map_err(|error| error.to_string())?,
             ),

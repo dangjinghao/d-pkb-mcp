@@ -5,15 +5,14 @@
 //! The repository is retained until explicitly cleaned up; shutdown cleanup is not
 //! implemented (static values are not dropped at process exit).
 
-use std::{fs, os::unix::fs::PermissionsExt, path::Path, path::PathBuf, sync::OnceLock};
+use std::{fs, os::unix::fs::PermissionsExt, path::Path, sync::OnceLock};
 
 use anyhow::{Context, Result, anyhow, ensure};
 use git2::{ErrorCode, Oid, Repository, Signature};
 use tempfile::TempDir;
 
 struct State {
-    root: PathBuf,
-    tmp_path: PathBuf,
+    paths: crate::paths::PkbPath,
     repository: TempDir,
 }
 
@@ -47,8 +46,7 @@ pub(crate) async fn init(root: &Path, tmp_path: &Path) -> Result<()> {
         )?;
         repo.config()?.set_bool("core.bare", false)?;
         let state = State {
-            root,
-            tmp_path,
+            paths: crate::paths::PkbPath::new(root, tmp_path),
             repository,
         };
         STATE
@@ -67,7 +65,11 @@ pub(crate) async fn snapshot(message: &str) -> Result<Oid> {
 
         // Build a fresh tree directly from the PKB. Deleted paths are naturally
         // absent; earlier commits keep their objects without a second file copy.
-        let tree = repo.find_tree(write_tree(&repo, &state.root, &state.tmp_path)?)?;
+        let tree = repo.find_tree(write_tree(
+            &repo,
+            state.paths.root(),
+            state.paths.tmp_path(),
+        )?)?;
         let parent = match repo.head() {
             Ok(head) => Some(head.peel_to_commit()?),
             Err(error) if error.code() == ErrorCode::UnbornBranch => None,
@@ -142,7 +144,7 @@ pub(crate) async fn restore_content(
     tokio::task::spawn_blocking(move || {
         let state = STATE.get().context("Snapshots are not initialized")?;
         ensure!(
-            !is_excluded(&state.root, &state.tmp_path, &path),
+            !is_excluded(&state.paths, &path),
             "Path is excluded from snapshots"
         );
         let repo = Repository::open(state.repository.path())?;
@@ -186,10 +188,10 @@ pub(crate) async fn restore_content(
     .await?
 }
 
-fn is_excluded(root: &Path, tmp_path: &Path, relative: &Path) -> bool {
+fn is_excluded(paths: &crate::paths::PkbPath, relative: &Path) -> bool {
     relative.components().any(|part| part.as_os_str() == ".git")
         // Tree construction skips the temp directory only when it is inside the PKB.
-        || (tmp_path.starts_with(root) && root.join(relative).starts_with(tmp_path))
+        || paths.is_path_reserved(&paths.root().join(relative))
 }
 
 fn file_entry(tree: &git2::Tree<'_>, path: &Path) -> Result<Option<(Oid, i32)>> {
@@ -234,6 +236,12 @@ mod tests {
 
     #[test]
     fn excludes_only_temp_paths_inside_the_pkb() {
+        let is_excluded = |root: &Path, tmp: &Path, path: &Path| {
+            super::is_excluded(
+                &crate::paths::PkbPath::new(root.to_owned(), tmp.to_owned()),
+                path,
+            )
+        };
         let root = Path::new("/tmp/pkb");
         let file = Path::new("DJH");
         assert!(!is_excluded(root, Path::new("/tmp"), file));

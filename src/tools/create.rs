@@ -6,7 +6,7 @@ use rmcp::{
     schemars, serde_json, tool, tool_router,
 };
 
-use crate::{hash::sha256_hex, paths::resolve_inside_root, staging::stage};
+use crate::{hash::sha256_hex, staging::stage};
 
 use super::PkbManager;
 use crate::snapshot::snapshot_if_enabled;
@@ -25,7 +25,8 @@ struct CreateOutput {
 #[tool_router(router = create_router, vis = "pub(super)")]
 impl PkbManager {
     #[tool(
-        description = "Create a new file at <file_path> with <content>. \
+        description = "The configured temporary directory inside the PKB is reserved: direct access is denied. \
+        Create a new file at <file_path> with <content>. \
         The target must not already exist; an existing file or directory is an error and is left unchanged. \
         The parent directory must already exist; do not create parent directories automatically. \
         Return the SHA-256 hex digest of the created file as structured content (`after_hash`). \
@@ -40,11 +41,12 @@ impl PkbManager {
         &self,
         Parameters(CreateParams { file_path, content }): Parameters<CreateParams>,
     ) -> Result<CallToolResult, String> {
-        let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &file_path) else {
-            return Err("Unsupported <file_path>".to_owned());
+        let target = match self.paths.resolve_inside_root(&file_path) {
+            Ok(path) => path,
+            Err(error) => return Err(error),
         };
         let _guard = self.mutex_lock.lock().await;
-        let temp = match stage(self.tmp_path.as_path(), &target, content.as_bytes()).await {
+        let temp = match stage(self.paths.tmp_path(), &target, content.as_bytes()).await {
             Ok(temp) => temp,
             Err(error) => return Err(error.to_string()),
         };

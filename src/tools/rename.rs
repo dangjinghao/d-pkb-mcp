@@ -7,7 +7,7 @@ use rmcp::{
 };
 use tokio::fs;
 
-use crate::{hash::sha256_hex, paths::resolve_inside_root};
+use crate::hash::sha256_hex;
 
 use super::PkbManager;
 use crate::snapshot::snapshot_if_enabled;
@@ -28,7 +28,8 @@ struct RenameOutput {
 impl PkbManager {
     #[tool(
         name = "rename",
-        description = "Move or rename the file or directory at <src_path> to <dst_path>, like `mv` with overwriting disabled. \
+        description = "The configured temporary directory inside the PKB is reserved: direct access is denied. Do not remove or move its ancestors. \
+        Move or rename the file or directory at <src_path> to <dst_path>, like `mv` with overwriting disabled. \
         If <dst_path> is an existing directory, place the source inside it using the source basename; \
         otherwise <dst_path> is the exact new path and its parent directory must already exist. \
         Report a tool error if the resulting destination already exists, the source is missing, \
@@ -55,17 +56,22 @@ impl PkbManager {
             if_hash,
         }): Parameters<RenameParams>,
     ) -> Result<CallToolResult, String> {
-        let root = self.pkb_root.as_path();
-        let Some(source) = resolve_inside_root(root, &src_path) else {
-            return Err("Unsupported <src_path>".to_owned());
+        let root = self.paths.root();
+        let source = match self.paths.resolve_inside_root(&src_path) {
+            Ok(path) => path,
+            Err(error) => return Err(error),
         };
-        if source == *self.pkb_root {
+        if source == *self.paths.root() {
             return Err("Cannot move the PKB root".to_owned());
         }
-        let Some(dst) = resolve_inside_root(root, &dst_path) else {
-            return Err("Unsupported <dst_path>".to_owned());
+        let dst = match self.paths.resolve_inside_root(&dst_path) {
+            Ok(path) => path,
+            Err(error) => return Err(error),
         };
         let _guard = self.mutex_lock.lock().await;
+        if self.paths.contains_reserved_path(&source) {
+            return Err(crate::paths::reserved_path_error(&source));
+        }
 
         let source_metadata = match fs::metadata(&source).await {
             Ok(metadata) => metadata,
@@ -82,6 +88,9 @@ impl PkbManager {
             _ => (dst, false),
         };
 
+        if self.paths.is_path_reserved(&destination) {
+            return Err(crate::paths::reserved_path_error(&destination));
+        }
         if fs::metadata(&destination).await.is_ok() {
             return Err("Destination already exists".to_owned());
         }
