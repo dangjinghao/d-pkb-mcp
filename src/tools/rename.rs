@@ -99,10 +99,8 @@ impl PkbManager {
             }
         }
 
-        //TODO: snapshot(path)
         match fs::rename(&source, &destination).await {
             Ok(()) => {
-                //TODO: snapshot(path)
                 let landed = destination.strip_prefix(root).unwrap_or(&destination);
                 let path = landed.to_string_lossy().into_owned();
                 let message = if moved_into_dir {

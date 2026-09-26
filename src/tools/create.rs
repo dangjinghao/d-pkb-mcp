@@ -46,10 +46,8 @@ impl PkbManager {
         };
         let after_hash = sha256_hex(content.as_bytes());
 
-        //TODO: snapshot(path)
         match temp.persist_noclobber(&target) {
             Ok(_) => {
-                //TODO: snapshot(path)
                 let output = CreateOutput { after_hash };
                 let value = match serde_json::to_value(&output) {
                     Ok(value) => value,

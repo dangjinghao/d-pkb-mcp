@@ -85,10 +85,8 @@ impl PkbManager {
             Err(error) => return Err(error.to_string()),
         };
 
-        //TODO: snapshot(path)
         match temp.persist(&target) {
             Ok(_) => {
-                //TODO: snapshot(path)
                 let output = EditOutput {
                     after_hash,
                     start_line,

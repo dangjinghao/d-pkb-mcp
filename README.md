@@ -1,6 +1,6 @@
 # D-PKB MCP
 
-Filesystem MCP for my personal knowledge base. Snapshot and undo support is not implemented yet.
+Filesystem MCP for my personal knowledge base.
 
 ## Run
 

@@ -73,7 +73,6 @@ impl PkbManager {
             }
         }
 
-        //TODO: snapshot(path)
         let result = if metadata.is_dir() {
             if recursive.unwrap_or(false) {
                 fs::remove_dir_all(&target).await
@@ -86,7 +85,6 @@ impl PkbManager {
 
         match result {
             Ok(()) => {
-                //TODO: snapshot(path)
                 let message = format!("Removed {path}");
                 let landed = target
                     .strip_prefix(self.pkb_root.as_path())

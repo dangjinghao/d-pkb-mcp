@@ -12,7 +12,6 @@ mod remove;
 mod rename;
 mod search;
 mod search_rg;
-mod undo;
 
 use rmcp::{ServerHandler, handler::server::router::tool::ToolRouter, tool_handler};
 use std::{path::PathBuf, sync::Arc};
@@ -49,7 +48,6 @@ impl PkbManager {
             + Self::find_rg_router()
             + Self::search_router()
             + Self::search_rg_router()
-            + Self::undo_router()
     }
 }
 

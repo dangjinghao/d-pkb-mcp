@@ -62,10 +62,8 @@ impl PkbManager {
             Err(error) => return Err(error.to_string()),
         };
 
-        //TODO: snapshot(path)
         match temp.persist(&target) {
             Ok(_) => {
-                //TODO: snapshot(path)
                 let output = OverwriteOutput { after_hash };
                 let value = match serde_json::to_value(&output) {
                     Ok(value) => value,
