@@ -3,7 +3,11 @@
 use std::path::{Path, PathBuf};
 
 use regex::Regex;
-use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
+use rmcp::{
+    handler::server::wrapper::Parameters,
+    model::{CallToolResult, ContentBlock},
+    schemars, tool, tool_router,
+};
 use tokio::{
     fs::File,
     io::{self, AsyncBufReadExt, BufReader},
@@ -111,19 +115,21 @@ impl PkbManager {
             path,
             limit,
         }): Parameters<SearchParams>,
-    ) -> String {
+    ) -> Result<CallToolResult, String> {
         let regex = match Regex::new(&regex_pattern) {
             Ok(regex) => regex,
-            Err(e) => return format!("Invalid <regex_pattern>: {e}"),
+            Err(e) => return Err(format!("Invalid <regex_pattern>: {e}")),
         };
         let root = self.pkb_root.as_path();
         let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")) else {
-            return "Unsupported <path>".to_owned();
+            return Err("Unsupported <path>".to_owned());
         };
 
         match collect_matches(resolved_path, &regex, limit.unwrap_or(DEFAULT_LIMIT)).await {
-            Ok((matches, truncated)) => format_matches(root, &matches, truncated),
-            Err(e) => e.to_string(),
+            Ok((matches, truncated)) => Ok(CallToolResult::success(vec![ContentBlock::text(
+                format_matches(root, &matches, truncated),
+            )])),
+            Err(e) => Err(e.to_string()),
         }
     }
 }

@@ -3,7 +3,11 @@
 use std::path::{Path, PathBuf};
 
 use globset::{Glob, GlobMatcher};
-use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
+use rmcp::{
+    handler::server::wrapper::Parameters,
+    model::{CallToolResult, ContentBlock},
+    schemars, tool, tool_router,
+};
 use tokio::io;
 
 use crate::{
@@ -82,19 +86,21 @@ impl PkbManager {
             path,
             limit,
         }): Parameters<FindParams>,
-    ) -> String {
+    ) -> Result<CallToolResult, String> {
         let matcher = match Glob::new(&glob_pattern) {
             Ok(glob) => glob.compile_matcher(),
-            Err(e) => return format!("Invalid <glob_pattern>: {e}"),
+            Err(e) => return Err(format!("Invalid <glob_pattern>: {e}")),
         };
         let root = self.pkb_root.as_path();
         let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")) else {
-            return "Unsupported <path>".to_owned();
+            return Err("Unsupported <path>".to_owned());
         };
 
         match collect_matches(resolved_path, &matcher, limit.unwrap_or(DEFAULT_LIMIT)).await {
-            Ok((matches, truncated)) => format_matches(root, &matches, truncated),
-            Err(e) => e.to_string(),
+            Ok((matches, truncated)) => Ok(CallToolResult::success(vec![ContentBlock::text(
+                format_matches(root, &matches, truncated),
+            )])),
+            Err(e) => Err(e.to_string()),
         }
     }
 }

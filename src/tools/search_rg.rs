@@ -2,7 +2,11 @@
 
 use std::ffi::OsString;
 
-use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
+use rmcp::{
+    handler::server::wrapper::Parameters,
+    model::{CallToolResult, ContentBlock},
+    schemars, tool, tool_router,
+};
 
 use crate::{paths::resolve_inside_root, rg, tools::DEFAULT_LIMIT};
 
@@ -54,10 +58,10 @@ impl PkbManager {
             path,
             limit,
         }): Parameters<SearchRgParams>,
-    ) -> String {
+    ) -> Result<CallToolResult, String> {
         let root = self.pkb_root.as_path();
         let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")) else {
-            return "Unsupported <path>".to_owned();
+            return Err("Unsupported <path>".to_owned());
         };
 
         let mut args = vec![
@@ -80,8 +84,10 @@ impl PkbManager {
         }
 
         match rg::run(root, args, limit.unwrap_or(DEFAULT_LIMIT)).await {
-            Ok(output) => output_text(output),
-            Err(e) => e,
+            Ok(output) => Ok(CallToolResult::success(vec![ContentBlock::text(
+                output_text(output),
+            )])),
+            Err(e) => Err(e),
         }
     }
 }

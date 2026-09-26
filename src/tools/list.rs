@@ -6,11 +6,15 @@ use crate::tools::DEFAULT_LIMIT;
 use super::PkbManager;
 
 use chrono::{DateTime, Utc};
-use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
+use rmcp::{
+    handler::server::wrapper::Parameters,
+    model::{CallToolResult, ContentBlock},
+    schemars, tool, tool_router,
+};
 use std::{os::unix::fs::MetadataExt, path::Path};
 use tokio::{
     fs::{self, DirEntry},
-    io::Result,
+    io::Result as IoResult,
 };
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -19,7 +23,7 @@ struct ListParams {
     limit: Option<usize>,
 }
 
-async fn read_dir(path: &Path, limit: usize) -> Result<(Vec<fs::DirEntry>, bool)> {
+async fn read_dir(path: &Path, limit: usize) -> IoResult<(Vec<fs::DirEntry>, bool)> {
     let mut entries = fs::read_dir(path).await?;
     let mut items = Vec::new();
     if limit == 0 {
@@ -93,16 +97,18 @@ impl PkbManager {
     async fn list(
         &self,
         Parameters(ListParams { dir_path, limit }): Parameters<ListParams>,
-    ) -> String {
+    ) -> Result<CallToolResult, String> {
         if let Some(resolved_path) =
             resolve_inside_root(self.pkb_root.as_path(), dir_path.as_deref().unwrap_or("."))
         {
             match read_dir(&resolved_path, limit.unwrap_or(DEFAULT_LIMIT)).await {
-                Ok(entries) => ll_style_output(&entries.0, entries.1).await,
-                Err(e) => e.to_string(),
+                Ok(entries) => Ok(CallToolResult::success(vec![ContentBlock::text(
+                    ll_style_output(&entries.0, entries.1).await,
+                )])),
+                Err(e) => Err(e.to_string()),
             }
         } else {
-            "Unsupported <dir_path>".to_owned()
+            Err("Unsupported <dir_path>".to_owned())
         }
     }
 }

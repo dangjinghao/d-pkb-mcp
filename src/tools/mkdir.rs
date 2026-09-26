@@ -1,6 +1,10 @@
 //! The `mkdir` tool: input schema, description, and handler.
 
-use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
+use rmcp::{
+    handler::server::wrapper::Parameters,
+    model::{CallToolResult, ContentBlock},
+    schemars, tool, tool_router,
+};
 use tokio::fs;
 
 use crate::paths::resolve_inside_root;
@@ -21,13 +25,13 @@ impl PkbManager {
         create missing parent directories and succeed if <path> is already a directory. \
         An existing file in place of a required directory is an error. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
-        Reject paths outside the PKB root.")]
+        Report failures as tool errors. Reject paths outside the PKB root.")]
     async fn mkdir(
         &self,
         Parameters(MkdirParams { path, parents }): Parameters<MkdirParams>,
-    ) -> String {
+    ) -> Result<CallToolResult, String> {
         let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &path) else {
-            return "Unsupported <path>".to_owned();
+            return Err("Unsupported <path>".to_owned());
         };
         let _guard = self.mutex_lock.lock().await;
         let result = if parents.unwrap_or(false) {
@@ -36,8 +40,10 @@ impl PkbManager {
             fs::create_dir(&target).await
         };
         match result {
-            Ok(()) => format!("Created {path}"),
-            Err(error) => error.to_string(),
+            Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+                "Created {path}"
+            ))])),
+            Err(error) => Err(error.to_string()),
         }
     }
 }
