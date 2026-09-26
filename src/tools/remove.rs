@@ -14,7 +14,6 @@ use super::PkbManager;
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct RemoveParams {
     path: String,
-    recursive: Option<bool>,
     if_hash: Option<String>,
 }
 
@@ -26,8 +25,7 @@ struct RemoveOutput {
 #[tool_router(router = remove_router, vis = "pub(super)")]
 impl PkbManager {
     #[tool(description = "Remove a file or an empty directory at <path>. \
-        <recursive> defaults to false when omitted or null; a nonempty directory is then an error. \
-        With <recursive>=true, remove a directory and its contents, like `rm -r`. \
+        A nonempty directory is an error and is left unchanged; recursive removal is not supported. \
         A missing path is an error; there is no force mode. \
         For a regular file, proceed only when <if_hash> equals the SHA-256 hex digest of the current \
         file content; otherwise leave the file unchanged and report a tool error whose text is \
@@ -41,11 +39,7 @@ impl PkbManager {
     )]
     async fn remove(
         &self,
-        Parameters(RemoveParams {
-            path,
-            recursive,
-            if_hash,
-        }): Parameters<RemoveParams>,
+        Parameters(RemoveParams { path, if_hash }): Parameters<RemoveParams>,
     ) -> Result<CallToolResult, String> {
         let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &path) else {
             return Err("Unsupported <path>".to_owned());
@@ -74,11 +68,7 @@ impl PkbManager {
         }
 
         let result = if metadata.is_dir() {
-            if recursive.unwrap_or(false) {
-                fs::remove_dir_all(&target).await
-            } else {
-                fs::remove_dir(&target).await
-            }
+            fs::remove_dir(&target).await
         } else {
             fs::remove_file(&target).await
         };
