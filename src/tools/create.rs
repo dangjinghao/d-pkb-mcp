@@ -31,7 +31,8 @@ impl PkbManager {
         The parent directory must already exist; do not create parent directories automatically. \
         Return the SHA-256 hex digest of the created file as structured content (`after_hash`). \
         When snapshots are enabled, save the PKB state before the operation and after success. \
-        A failed pre-operation snapshot prevents the change; a failed post-operation snapshot reports \
+        If the operation fails without changing snapshotted disk content, discard its pre-operation snapshot; \
+        otherwise retain it for recovery. A failed pre-operation snapshot prevents the change; a failed post-operation snapshot reports \
         that the change completed without its final snapshot. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root.",
@@ -52,7 +53,7 @@ impl PkbManager {
         };
         let after_hash = sha256_hex(content.as_bytes());
 
-        snapshot_if_enabled(&format!("before create: {file_path:?}"))
+        let before = snapshot_if_enabled(&format!("before create: {file_path:?}"))
             .await
             .map_err(|error| {
                 format!("Pre-operation snapshot failed; operation not performed: {error}")
@@ -75,7 +76,7 @@ impl PkbManager {
                 result.structured_content = Some(value);
                 Ok(result)
             }
-            Err(error) => Err(error.error.to_string()),
+            Err(error) => Err(crate::snapshot::operation_failed(before, error.error).await),
         }
     }
 }

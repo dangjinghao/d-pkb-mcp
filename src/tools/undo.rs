@@ -38,7 +38,9 @@ impl PkbManager {
         and the PKB root. History follows paths, not renames. \
         Stage restored content in the temporary directory, then move it over the target. \
         Save snapshots before and after restoration, preserving the current disk state, \
-        including external edits. A failed pre-restoration snapshot prevents changes; \
+        including external edits. If restoration fails without changing snapshotted disk content, \
+        discard its pre-restoration snapshot; otherwise retain it for recovery. \
+        A failed pre-restoration snapshot prevents changes; \
         a failed post-restoration snapshot reports that restoration completed without its final snapshot. \
         Report an error if snapshots are disabled, no previous state is available for default undo, \
         or <snapshot> is not a known session snapshot. Paths excluded from snapshots cannot be restored. \
@@ -87,23 +89,30 @@ impl PkbManager {
             ),
             None => None,
         };
-        snapshot::snapshot(&format!("before undo: {relative:?}"))
+        let before = snapshot::snapshot(&format!("before undo: {relative:?}"))
             .await
             .map_err(|error| {
                 format!("Pre-restoration snapshot failed; operation not performed: {error}")
             })?;
-        if let Some(temp) = temp {
-            if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent)
+        let result: Result<(), String> = async {
+            if let Some(temp) = temp {
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                }
+                temp.persist(&target)
+                    .map_err(|error| error.error.to_string())?;
+            } else if exists {
+                fs::remove_file(&target)
                     .await
                     .map_err(|error| error.to_string())?;
             }
-            temp.persist(&target)
-                .map_err(|error| error.error.to_string())?;
-        } else if exists {
-            fs::remove_file(&target)
-                .await
-                .map_err(|error| error.to_string())?;
+            Ok(())
+        }
+        .await;
+        if let Err(error) = result {
+            return Err(snapshot::operation_failed(Some(before), error).await);
         }
         snapshot::snapshot(&format!("after undo: {relative:?}"))
             .await

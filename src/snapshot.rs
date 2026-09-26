@@ -91,11 +91,44 @@ pub(crate) async fn snapshot(message: &str) -> Result<Oid> {
 
 /// Record a tool snapshot unless startup disabled snapshots.
 /// Callers must hold the shared mutation lock across both snapshots and the change.
-pub(crate) async fn snapshot_if_enabled(message: &str) -> Result<()> {
+pub(crate) async fn snapshot_if_enabled(message: &str) -> Result<Option<Oid>> {
     if STATE.get().is_some() {
-        snapshot(message).await?;
+        return Ok(Some(snapshot(message).await?));
     }
-    Ok(())
+    Ok(None)
+}
+
+/// Call while holding the mutation lock. Keep recovery data if a failed operation
+/// changed files partially, or the current disk state cannot be inspected.
+pub(crate) async fn operation_failed(before: Option<Oid>, error: impl std::fmt::Display) -> String {
+    let error = error.to_string();
+    let Some(before) = before else { return error };
+    match discard_unchanged_snapshot(before).await {
+        Ok(true) => error,
+        Ok(false) => {
+            format!("{error}; pre-operation snapshot retained because disk content changed")
+        }
+        Err(cleanup) => format!("{error}; cannot discard pre-operation snapshot: {cleanup}"),
+    }
+}
+
+/// Move only the Git reference, never the PKB files. Unreachable objects may
+/// remain in storage, but no longer appear in snapshot_list.
+async fn discard_unchanged_snapshot(before: Oid) -> Result<bool> {
+    tokio::task::spawn_blocking(move || {
+        let state = STATE.get().context("Snapshots are not initialized")?;
+        let repo = Repository::open(state.repository.path())?;
+        let mut head = repo.head()?;
+        ensure!(head.target() == Some(before), "Snapshot HEAD changed");
+        let commit = repo.find_commit(before)?;
+        let tree = write_tree(&repo, state.paths.root(), state.paths.tmp_path())?;
+        if tree != commit.tree_id() {
+            return Ok(false);
+        }
+        head.set_target(commit.parent_id(0)?, "discard snapshot of failed operation")?;
+        Ok(true)
+    })
+    .await?
 }
 
 /// List reachable commits in reverse history order, with their one-line titles.
@@ -360,6 +393,25 @@ mod tests {
                 .await
                 .is_err()
         );
+        let before = snapshot("before failed operation").await?;
+        ensure!(discard_unchanged_snapshot(before).await?);
+        ensure!(list(0).await?.0 == expected);
+        ensure!(fs::read_to_string(root.join("new.txt"))? == "new");
+
+        let before = snapshot("before partial failure").await?;
+        fs::remove_file(root.join("new.txt"))?;
+        ensure!(!discard_unchanged_snapshot(before).await?);
+        ensure!(list(1).await?.0[0].0 == before);
+        fs::write(root.join("new.txt"), "new")?;
+        ensure!(discard_unchanged_snapshot(before).await?);
+        ensure!(list(0).await?.0 == expected);
+
+        let before = snapshot("before stale cleanup").await?;
+        let after = snapshot("later commit").await?;
+        ensure!(discard_unchanged_snapshot(before).await.is_err());
+        ensure!(list(1).await?.0[0].0 == after);
+        ensure!(discard_unchanged_snapshot(after).await?);
+        ensure!(discard_unchanged_snapshot(before).await?);
         Ok(())
     }
 }
