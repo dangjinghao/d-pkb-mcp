@@ -10,6 +10,7 @@ use tokio::fs;
 use crate::{hash::sha256_hex, paths::resolve_inside_root};
 
 use super::PkbManager;
+use crate::snapshot::snapshot_if_enabled;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct RemoveParams {
@@ -35,6 +36,9 @@ impl PkbManager {
         ignored for directory removal. \
         The PKB must contain only regular files and directories; behavior is undefined if symbolic links are present. \
         Return the removed root-relative path as structured content (`path`). \
+        When snapshots are enabled, save the PKB state before the operation and after success. \
+        A failed pre-operation snapshot prevents the change; a failed post-operation snapshot reports \
+        that the change completed without its final snapshot. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject removing the PKB root and paths outside it.",
         output_schema = rmcp::handler::server::tool::schema_for_output::<RemoveOutput>()
@@ -73,7 +77,11 @@ impl PkbManager {
             }
         }
 
-        //TODO: snapshot(path)
+        snapshot_if_enabled(&format!("before remove: {path:?}"))
+            .await
+            .map_err(|error| {
+                format!("Pre-operation snapshot failed; operation not performed: {error}")
+            })?;
         let result = if metadata.is_dir() {
             if recursive.unwrap_or(false) {
                 fs::remove_dir_all(&target).await
@@ -86,7 +94,11 @@ impl PkbManager {
 
         match result {
             Ok(()) => {
-                //TODO: snapshot(path)
+                snapshot_if_enabled(&format!("after remove: {path:?}"))
+                    .await
+                    .map_err(|error| {
+                        format!("Remove completed, but post-operation snapshot failed: {error}")
+                    })?;
                 let message = format!("Removed {path}");
                 let landed = target
                     .strip_prefix(self.pkb_root.as_path())

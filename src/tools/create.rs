@@ -9,6 +9,7 @@ use rmcp::{
 use crate::{hash::sha256_hex, paths::resolve_inside_root, staging::stage};
 
 use super::PkbManager;
+use crate::snapshot::snapshot_if_enabled;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct CreateParams {
@@ -28,6 +29,9 @@ impl PkbManager {
         The target must not already exist; an existing file or directory is an error and is left unchanged. \
         The parent directory must already exist; do not create parent directories automatically. \
         Return the SHA-256 hex digest of the created file as structured content (`after_hash`). \
+        When snapshots are enabled, save the PKB state before the operation and after success. \
+        A failed pre-operation snapshot prevents the change; a failed post-operation snapshot reports \
+        that the change completed without its final snapshot. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root.",
         output_schema = rmcp::handler::server::tool::schema_for_output::<CreateOutput>()
@@ -46,10 +50,18 @@ impl PkbManager {
         };
         let after_hash = sha256_hex(content.as_bytes());
 
-        //TODO: snapshot(path)
+        snapshot_if_enabled(&format!("before create: {file_path:?}"))
+            .await
+            .map_err(|error| {
+                format!("Pre-operation snapshot failed; operation not performed: {error}")
+            })?;
         match temp.persist_noclobber(&target) {
             Ok(_) => {
-                //TODO: snapshot(path)
+                snapshot_if_enabled(&format!("after create: {file_path:?}"))
+                    .await
+                    .map_err(|error| {
+                        format!("Create completed, but post-operation snapshot failed: {error}")
+                    })?;
                 let output = CreateOutput { after_hash };
                 let value = match serde_json::to_value(&output) {
                     Ok(value) => value,

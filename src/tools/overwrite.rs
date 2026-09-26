@@ -10,6 +10,7 @@ use tokio::fs;
 use crate::{hash::sha256_hex, paths::resolve_inside_root, staging::stage};
 
 use super::PkbManager;
+use crate::snapshot::snapshot_if_enabled;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct OverwriteParams {
@@ -32,6 +33,9 @@ impl PkbManager {
         otherwise leave the file unchanged and report a tool error whose text is \
         `sha mismatch, current_sha: <sha256 hex>`. \
         Return the SHA-256 hex digest of the overwritten file as structured content (`after_hash`). \
+        When snapshots are enabled, save the PKB state before the operation and after success. \
+        A failed pre-operation snapshot prevents the change; a failed post-operation snapshot reports \
+        that the change completed without its final snapshot. \
         Relative paths are resolved from the PKB root. Paths are literal, with no shell expansion. \
         Reject paths outside the PKB root.",
         output_schema = rmcp::handler::server::tool::schema_for_output::<OverwriteOutput>()
@@ -62,10 +66,18 @@ impl PkbManager {
             Err(error) => return Err(error.to_string()),
         };
 
-        //TODO: snapshot(path)
+        snapshot_if_enabled(&format!("before overwrite: {file_path:?}"))
+            .await
+            .map_err(|error| {
+                format!("Pre-operation snapshot failed; operation not performed: {error}")
+            })?;
         match temp.persist(&target) {
             Ok(_) => {
-                //TODO: snapshot(path)
+                snapshot_if_enabled(&format!("after overwrite: {file_path:?}"))
+                    .await
+                    .map_err(|error| {
+                        format!("Overwrite completed, but post-operation snapshot failed: {error}")
+                    })?;
                 let output = OverwriteOutput { after_hash };
                 let value = match serde_json::to_value(&output) {
                     Ok(value) => value,
