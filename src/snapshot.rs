@@ -131,6 +131,75 @@ pub(crate) async fn list(limit: usize) -> Result<(Vec<(Oid, String)>, bool)> {
     .await?
 }
 
+/// Select and read a file version before recording the pre-restoration snapshot.
+/// None means the selected commit has no file at this path.
+pub(crate) async fn restore_content(
+    path: &Path,
+    snapshot: Option<&str>,
+) -> Result<Option<Vec<u8>>> {
+    let path = path.to_owned();
+    let snapshot = snapshot.map(str::to_owned);
+    tokio::task::spawn_blocking(move || {
+        let state = STATE.get().context("Snapshots are not initialized")?;
+        ensure!(
+            !is_excluded(&state.root, &state.tmp_path, &path),
+            "Path is excluded from snapshots"
+        );
+        let repo = Repository::open(state.repository.path())?;
+        let head = repo
+            .head()
+            .context("No recovery record exists")?
+            .peel_to_commit()?;
+        let selected = if let Some(snapshot) = snapshot {
+            ensure!(snapshot.len() == 40, "Expected a full snapshot commit ID");
+            let id = Oid::from_str(&snapshot).context("Invalid snapshot commit ID")?;
+            ensure!(
+                id == head.id() || repo.graph_descendant_of(head.id(), id)?,
+                "Not a known session snapshot"
+            );
+            repo.find_commit(id)?
+        } else {
+            let mut commit = head;
+            loop {
+                ensure!(
+                    commit.parent_count() > 0,
+                    "No previous state exists for this path"
+                );
+                let parent = commit.parent(0)?;
+                if file_entry(&commit.tree()?, &path)? != file_entry(&parent.tree()?, &path)? {
+                    break parent;
+                }
+                commit = parent;
+            }
+        };
+        match file_entry(&selected.tree()?, &path)? {
+            Some((id, mode)) => {
+                ensure!(
+                    mode == 0o100644 || mode == 0o100755,
+                    "Cannot restore a directory"
+                );
+                Ok(Some(repo.find_blob(id)?.content().to_vec()))
+            }
+            None => Ok(None),
+        }
+    })
+    .await?
+}
+
+fn is_excluded(root: &Path, tmp_path: &Path, relative: &Path) -> bool {
+    relative.components().any(|part| part.as_os_str() == ".git")
+        // Tree construction skips the temp directory only when it is inside the PKB.
+        || (tmp_path.starts_with(root) && root.join(relative).starts_with(tmp_path))
+}
+
+fn file_entry(tree: &git2::Tree<'_>, path: &Path) -> Result<Option<(Oid, i32)>> {
+    match tree.get_path(path) {
+        Ok(entry) => Ok(Some((entry.id(), entry.filemode()))),
+        Err(error) if error.code() == ErrorCode::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
 fn write_tree(repo: &Repository, directory: &Path, excluded: &Path) -> Result<Oid> {
     // Build trees from raw bytes so ignore rules, nested repositories, and Git
     // attributes cannot omit files or convert their contents. Empty directories
@@ -162,6 +231,30 @@ fn write_tree(repo: &Repository, directory: &Path, excluded: &Path) -> Result<Oi
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn excludes_only_temp_paths_inside_the_pkb() {
+        let root = Path::new("/tmp/pkb");
+        let file = Path::new("DJH");
+        assert!(!is_excluded(root, Path::new("/tmp"), file));
+        assert!(!is_excluded(root, Path::new("/tmp/staging"), file));
+        assert!(!is_excluded(root, Path::new("/tmp/pkb/.tmp"), file));
+        assert!(is_excluded(
+            root,
+            Path::new("/tmp/pkb/.tmp"),
+            Path::new(".tmp/file")
+        ));
+        assert!(!is_excluded(
+            root,
+            Path::new("/tmp/pkb/.tmp"),
+            Path::new(".tmp-other/file")
+        ));
+        assert!(is_excluded(
+            root,
+            Path::new("/tmp"),
+            Path::new("nested/.git/config")
+        ));
+    }
 
     #[tokio::test]
     async fn records_versions_directly_without_changing_pkb_git_data() -> Result<()> {
@@ -224,6 +317,41 @@ mod tests {
         ensure!(repo.find_commit(third)?.parent_id(0)? == second);
         ensure!(repo.find_commit(third)?.tree_id() == second_tree.id());
         ensure!(fs::read_to_string(root.join("nested/.git/config"))? == "original repository");
+        ensure!(
+            restore_content(Path::new("nested/note.txt"), None).await? == Some(b"old\r\n".to_vec())
+        );
+        ensure!(restore_content(Path::new("new.txt"), None).await?.is_none());
+        ensure!(restore_content(Path::new("image.bin"), None).await.is_err());
+        ensure!(restore_content(Path::new("missing"), None).await.is_err());
+        ensure!(
+            restore_content(Path::new("image.bin"), Some(&first.to_string())).await?
+                == Some(vec![0, 255, 1])
+        );
+        ensure!(
+            restore_content(Path::new("nested"), Some(&first.to_string()))
+                .await
+                .is_err()
+        );
+        ensure!(
+            restore_content(Path::new(".git/config"), Some(&first.to_string()))
+                .await
+                .is_err()
+        );
+        ensure!(
+            restore_content(Path::new(".tmp/staged.txt"), Some(&first.to_string()))
+                .await
+                .is_err()
+        );
+        ensure!(
+            restore_content(Path::new("new.txt"), Some("HEAD"))
+                .await
+                .is_err()
+        );
+        ensure!(
+            restore_content(Path::new("new.txt"), Some(&"0".repeat(40)))
+                .await
+                .is_err()
+        );
         Ok(())
     }
 }
