@@ -1,7 +1,7 @@
 //! Process-local snapshots with Git metadata stored separately from the PKB.
 //! Call init once before serving requests. Call snapshot while holding the tools'
 //! shared mutation lock. These functions do not provide their own mutation lock.
-//! Git and file reads run on blocking threads. Tools are not wired to this module yet.
+//! Git and file reads run on blocking threads.
 //! The repository is retained until explicitly cleaned up; shutdown cleanup is not
 //! implemented (static values are not dropped at process exit).
 
@@ -87,6 +87,50 @@ pub(crate) async fn snapshot(message: &str) -> Result<Oid> {
     .await?
 }
 
+/// Record a tool snapshot unless startup disabled snapshots.
+/// Callers must hold the shared mutation lock across both snapshots and the change.
+pub(crate) async fn snapshot_if_enabled(message: &str) -> Result<()> {
+    if STATE.get().is_some() {
+        snapshot(message).await?;
+    }
+    Ok(())
+}
+
+/// List reachable commits in reverse history order, with their one-line titles.
+/// Zero means unlimited; the boolean indicates whether more commits exist.
+pub(crate) async fn list(limit: usize) -> Result<(Vec<(Oid, String)>, bool)> {
+    tokio::task::spawn_blocking(move || {
+        let state = STATE.get().context("Snapshots are not initialized")?;
+        let repo = Repository::open(state.repository.path())?;
+        let head = match repo.head() {
+            Ok(head) => head.peel_to_commit()?.id(),
+            Err(error) if error.code() == ErrorCode::UnbornBranch => {
+                return Ok((Vec::new(), false));
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let mut history = repo.revwalk()?;
+        // Parent order remains correct even when commits share a timestamp.
+        history.set_sorting(git2::Sort::TOPOLOGICAL)?;
+        history.push(head)?;
+        let mut entries = Vec::new();
+        for id in history {
+            let id = id?;
+            if limit != 0 && entries.len() == limit {
+                return Ok((entries, true));
+            }
+            let commit = repo.find_commit(id)?;
+            let title = String::from_utf8_lossy(commit.summary_bytes().unwrap_or_default())
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            entries.push((id, title));
+        }
+        Ok((entries, false))
+    })
+    .await?
+}
+
 fn write_tree(repo: &Repository, directory: &Path, excluded: &Path) -> Result<Oid> {
     // Build trees from raw bytes so ignore rules, nested repositories, and Git
     // attributes cannot omit files or convert their contents. Empty directories
@@ -122,6 +166,8 @@ mod tests {
     #[tokio::test]
     async fn records_versions_directly_without_changing_pkb_git_data() -> Result<()> {
         ensure!(snapshot("before init").await.is_err());
+        ensure!(list(0).await.is_err());
+        snapshot_if_enabled("disabled").await?;
         let folder = tempfile::tempdir()?;
         let root = folder.path().join("pkb");
         let tmp = root.join(".tmp");
@@ -137,12 +183,21 @@ mod tests {
         fs::create_dir_all(root.join(".git"))?;
         fs::write(root.join(".git/config"), "root repository")?;
         init(&root, &tmp).await?;
+        ensure!(list(0).await? == (Vec::new(), false));
         ensure!(init(&root, &tmp).await.is_err());
         let first = snapshot("initial").await?;
         fs::remove_file(root.join("nested/note.txt"))?;
         fs::write(root.join("new.txt"), "new")?;
         let second = snapshot("remove and create").await?;
-        let third = snapshot("unchanged").await?;
+        let third = snapshot("unchanged\n\nPrivate metadata").await?;
+        let expected = vec![
+            (third, "unchanged".to_owned()),
+            (second, "remove and create".to_owned()),
+            (first, "initial".to_owned()),
+        ];
+        ensure!(list(0).await? == (expected.clone(), false));
+        ensure!(list(3).await? == (expected.clone(), false));
+        ensure!(list(2).await? == (expected[..2].to_vec(), true));
 
         let repo = Repository::open(STATE.get().unwrap().repository.path())?;
         ensure!(repo.workdir() == Some(root.as_path()));
