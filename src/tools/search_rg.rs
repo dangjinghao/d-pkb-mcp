@@ -37,12 +37,13 @@ impl PkbManager {
         alternative to `search` on large knowledge bases. \
         Interpret <regex_pattern> as a regular expression and return each matching line \
         with its file path, 1-based line number, and text. \
-        Like `search`, this includes hidden files and does not honor ignore files such as \
+        Like `search`, this does not honor ignore files such as \
         `.gitignore` and `.ignore`; it uses rg's own regex, encoding, and binary-file rules. \
         <limit> defaults to DEFAULT_LIMIT matching lines in total when omitted or null, not files \
         or individual matches; 0 means no limit. Return rg's output unchanged (one `path:line:text` \
         match per line, with paths relative to the PKB root) and append a trailing `[truncated: ...]` \
         line when results are truncated. \
+        Skip dot-prefixed files and directories at every depth, including an explicitly supplied hidden <path>. \
         No matches is a successful empty result. If `rg` is not installed, return \
         \"`rg` is not available, use native tool instead\". \
         Report invalid regular expressions and other failures as tool errors. \
@@ -63,6 +64,13 @@ impl PkbManager {
         let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")) else {
             return Err("Unsupported <path>".to_owned());
         };
+        if crate::paths::is_hidden(resolved_path.strip_prefix(root).unwrap_or(&resolved_path)) {
+            tokio::fs::metadata(&resolved_path)
+                .await
+                .map_err(|error| error.to_string())?;
+            // .* path has been hidden, so if the target path is in hidden path, just return an empty result.
+            return Ok(CallToolResult::success(vec![ContentBlock::text("")]));
+        }
 
         let mut args = vec![
             OsString::from("--line-number"),
@@ -70,7 +78,6 @@ impl PkbManager {
             OsString::from("--with-filename"),
             OsString::from("--color=never"),
             OsString::from("--no-config"),
-            OsString::from("--hidden"),
             OsString::from("--no-ignore"),
             OsString::from("--sort"),
             OsString::from("path"),

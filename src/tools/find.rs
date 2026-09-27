@@ -75,6 +75,7 @@ impl PkbManager {
         when omitted or null. \
         <limit> defaults to DEFAULT_LIMIT matching entries when omitted or null; 0 means no limit. \
         Return matching paths and indicate whether results are truncated. \
+        Skip dot-prefixed files and directories at every depth, including an explicitly supplied hidden <path>. \
         No matches is a successful empty result. Report failures as tool errors. \
         Relative paths are resolved from the PKB root, with no shell expansion. \
         Reject paths outside the PKB root."
@@ -95,6 +96,13 @@ impl PkbManager {
         let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")) else {
             return Err("Unsupported <path>".to_owned());
         };
+        if crate::paths::is_hidden(resolved_path.strip_prefix(root).unwrap_or(&resolved_path)) {
+            tokio::fs::metadata(&resolved_path)
+                .await
+                .map_err(|error| error.to_string())?;
+            // We hide .* path result,so if the target path is in hidden path, just return an empty result.
+            return Ok(CallToolResult::success(vec![ContentBlock::text("")]));
+        }
 
         match collect_matches(resolved_path, &matcher, limit.unwrap_or(DEFAULT_LIMIT)).await {
             Ok((matches, truncated)) => Ok(CallToolResult::success(vec![ContentBlock::text(

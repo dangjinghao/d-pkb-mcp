@@ -27,6 +27,13 @@ pub(crate) fn resolve_inside_root(root: &Path, user_path: &str) -> Option<PathBu
     Some(root.join(relative))
 }
 
+/// Check a normalized root-relative path; the PKB root itself is not hidden.
+pub(crate) fn is_hidden(path: &Path) -> bool {
+    path.components().any(|component| {
+        matches!(component, Component::Normal(name) if name.as_encoded_bytes().starts_with(b"."))
+    })
+}
+
 pub(crate) struct Walker {
     stack: Vec<PathBuf>,
     buffer: VecDeque<PathBuf>,
@@ -60,7 +67,9 @@ impl Walker {
             let mut read_dir = fs::read_dir(&dir).await?;
             let mut entries = Vec::new();
             while let Some(entry) = read_dir.next_entry().await? {
-                entries.push(entry);
+                if !is_hidden(Path::new(&entry.file_name())) {
+                    entries.push(entry);
+                }
             }
             entries.sort_by_key(|entry| entry.file_name());
 

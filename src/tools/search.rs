@@ -100,6 +100,7 @@ impl PkbManager {
         with its file path, 1-based line number, and text. \
         <limit> defaults to DEFAULT_LIMIT matching lines in total when omitted or null, not files \
         or individual matches; 0 means no limit. Indicate whether results are truncated. \
+        Skip dot-prefixed files and directories at every depth, including an explicitly supplied hidden <path>. \
         No matches is a successful empty result. \
         Skip files that cannot be opened, and stop reading a file at its first non-UTF-8 line. \
         Report invalid regular expressions and other failures as tool errors. \
@@ -124,6 +125,13 @@ impl PkbManager {
         let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")) else {
             return Err("Unsupported <path>".to_owned());
         };
+        if crate::paths::is_hidden(resolved_path.strip_prefix(root).unwrap_or(&resolved_path)) {
+            tokio::fs::metadata(&resolved_path)
+                .await
+                .map_err(|error| error.to_string())?;
+            // .* path has been hidden, so if the target path is in hidden path, just return an empty result.
+            return Ok(CallToolResult::success(vec![ContentBlock::text("")]));
+        }
 
         match collect_matches(resolved_path, &regex, limit.unwrap_or(DEFAULT_LIMIT)).await {
             Ok((matches, truncated)) => Ok(CallToolResult::success(vec![ContentBlock::text(

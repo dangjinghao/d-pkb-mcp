@@ -39,11 +39,12 @@ impl PkbManager {
         depth, while a pattern containing `/` is matched against the path relative to the PKB root. \
         Only <glob_pattern> is interpreted as a glob; <path> is literal and defaults to the PKB root \
         when omitted or null. \
-        Like `find`, this includes hidden entries and does not honor ignore files such as \
+        Like `find`, this does not honor ignore files such as \
         `.gitignore` and `.ignore`; unlike `find`, it lists files only, never directories. \
         <limit> defaults to DEFAULT_LIMIT matching entries when omitted or null; 0 means no limit. \
         Return rg's output unchanged (one path per line, relative to the PKB root) and append a \
         trailing `[truncated: ...]` line when results are truncated. \
+        Skip dot-prefixed files and directories at every depth, including an explicitly supplied hidden <path>. \
         No matches is a successful empty result. If `rg` is not installed, return \
         \"`rg` is not available, use native tool instead\". \
         Report other failures as tool errors. Relative paths are resolved from the PKB root, \
@@ -61,15 +62,23 @@ impl PkbManager {
         let Some(resolved_path) = resolve_inside_root(root, path.as_deref().unwrap_or(".")) else {
             return Err("Unsupported <path>".to_owned());
         };
+        if crate::paths::is_hidden(resolved_path.strip_prefix(root).unwrap_or(&resolved_path)) {
+            tokio::fs::metadata(&resolved_path)
+                .await
+                .map_err(|error| error.to_string())?;
+            // .* path has been hidden, so if the target path is in hidden path, just return an empty result.
+            return Ok(CallToolResult::success(vec![ContentBlock::text("")]));
+        }
 
         let mut args = vec![
             OsString::from("--files"),
             OsString::from("--no-config"),
-            OsString::from("--hidden"),
             OsString::from("--no-ignore"),
             OsString::from("--sort"),
             OsString::from("path"),
             OsString::from(format!("--glob={glob_pattern}")),
+            // exclude .* before user glob input
+            OsString::from("--glob=!.*"),
         ];
 
         let relative_path = resolved_path.strip_prefix(root).unwrap_or(&resolved_path);
