@@ -33,7 +33,9 @@ async fn read_range(path: &Path, start: u64, size: usize) -> io::Result<BinReadO
     if size > MAX_READ_SIZE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "size must be at most 65536 bytes; use download_link for a full download",
+            format!(
+                "size must be at most {MAX_READ_SIZE} bytes; use download_link for a full download"
+            ),
         ));
     }
     let mut file = File::open(path).await?;
@@ -85,25 +87,44 @@ mod tests {
 
     #[tokio::test]
     async fn reads_binary_ranges_and_eof() {
+        const CONTENT: &[u8] = &[0, 255, 128, 1];
+        const RANGE_START: u64 = 1;
+        const RANGE_BYTES: usize = 2;
+        const TAIL_START: u64 = 3;
+        const OVERSIZED_RANGE_BYTES: usize = 5;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("binary");
-        tokio::fs::write(&path, [0, 255, 128, 1]).await.unwrap();
-        let output = read_range(&path, 1, 2).await.unwrap();
-        assert_eq!(STANDARD.decode(output.base64).unwrap(), [255, 128]);
-        assert_eq!(output.size, 2);
-        assert_eq!(read_range(&path, 3, 5).await.unwrap().size, 1);
-        let eof = read_range(&path, 4, 1).await.unwrap();
+        tokio::fs::write(&path, CONTENT).await.unwrap();
+        let output = read_range(&path, RANGE_START, RANGE_BYTES).await.unwrap();
+        assert_eq!(
+            STANDARD.decode(output.base64).unwrap(),
+            &CONTENT[RANGE_START as usize..RANGE_START as usize + RANGE_BYTES]
+        );
+        assert_eq!(output.size, RANGE_BYTES);
+        assert_eq!(
+            read_range(&path, TAIL_START, OVERSIZED_RANGE_BYTES)
+                .await
+                .unwrap()
+                .size,
+            CONTENT.len() - TAIL_START as usize
+        );
+        let eof = read_range(&path, CONTENT.len() as u64, 1).await.unwrap();
         assert_eq!(eof.size, 0);
         assert!(eof.base64.is_empty());
-        assert!(read_range(&path, 5, 0).await.is_err());
+        assert!(
+            read_range(&path, CONTENT.len() as u64 + 1, 0)
+                .await
+                .is_err()
+        );
         assert_eq!(read_range(&path, 0, 0).await.unwrap().size, 0);
     }
 
     #[tokio::test]
     async fn limits_each_request_not_file_size() {
+        const BINARY_FILL_BYTE: u8 = 255;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("large");
-        tokio::fs::write(&path, vec![255; MAX_READ_SIZE + 1])
+        tokio::fs::write(&path, vec![BINARY_FILL_BYTE; MAX_READ_SIZE + 1])
             .await
             .unwrap();
         assert_eq!(

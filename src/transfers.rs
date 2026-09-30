@@ -43,6 +43,7 @@ impl Drop for Reservation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::DEFAULT_LINK_TTL_SECS;
     use crate::{
         downloads::Downloads,
         hash::sha256_hex,
@@ -66,7 +67,9 @@ mod tests {
     #[tokio::test]
     async fn uploads_and_downloads_share_capacity_and_commit_releases_it() {
         let dir = tempfile::tempdir().unwrap();
-        let quota = Arc::new(TransferQuota::new(8).unwrap());
+        const CONTENT: &[u8] = b"data";
+        const SHARED_CAPACITY_BYTES: u64 = 8;
+        let quota = Arc::new(TransferQuota::new(SHARED_CAPACITY_BYTES).unwrap());
         let downloads = Arc::new(Downloads::new(quota.clone()));
         let uploads = Arc::new(Uploads::new(
             dir.path().to_owned(),
@@ -76,19 +79,39 @@ mod tests {
         ));
         let source = dir.path().join("source");
         tokio::fs::write(&source, b"data").await.unwrap();
-        downloads.prepare(&source, dir.path(), 300).await.unwrap();
+        downloads
+            .prepare(&source, dir.path(), DEFAULT_LINK_TTL_SECS)
+            .await
+            .unwrap();
         assert!(
             uploads
-                .prepare("large", 5, sha256_hex(b"large"), None, 300)
+                .prepare(
+                    "large",
+                    b"large".len() as u64,
+                    sha256_hex(b"large"),
+                    None,
+                    DEFAULT_LINK_TTL_SECS
+                )
                 .await
                 .is_err()
         );
         let subpath = uploads
-            .prepare("new", 4, sha256_hex(b"data"), None, 300)
+            .prepare(
+                "new",
+                CONTENT.len() as u64,
+                sha256_hex(b"data"),
+                None,
+                DEFAULT_LINK_TTL_SECS,
+            )
             .await
             .unwrap();
-        assert_eq!(*quota.used.lock().unwrap(), 8);
-        assert!(downloads.prepare(&source, dir.path(), 300).await.is_err());
+        assert_eq!(*quota.used.lock().unwrap(), SHARED_CAPACITY_BYTES);
+        assert!(
+            downloads
+                .prepare(&source, dir.path(), DEFAULT_LINK_TTL_SECS)
+                .await
+                .is_err()
+        );
         assert!(
             resource_upload(
                 State(uploads.clone()),
@@ -98,12 +121,15 @@ mod tests {
             .await
             .is_ok()
         );
-        assert_eq!(*quota.used.lock().unwrap(), 4);
-        downloads.prepare(&source, dir.path(), 300).await.unwrap();
-        assert_eq!(*quota.used.lock().unwrap(), 8);
+        assert_eq!(*quota.used.lock().unwrap(), CONTENT.len() as u64);
+        downloads
+            .prepare(&source, dir.path(), DEFAULT_LINK_TTL_SECS)
+            .await
+            .unwrap();
+        assert_eq!(*quota.used.lock().unwrap(), SHARED_CAPACITY_BYTES);
         assert!(
             uploads
-                .prepare("other", 1, sha256_hex(b"x"), None, 300)
+                .prepare("other", 1, sha256_hex(b"x"), None, DEFAULT_LINK_TTL_SECS)
                 .await
                 .is_err()
         );
@@ -111,7 +137,7 @@ mod tests {
         assert_eq!(*quota.used.lock().unwrap(), 0);
         assert!(
             uploads
-                .prepare("other", 1, sha256_hex(b"x"), None, 300)
+                .prepare("other", 1, sha256_hex(b"x"), None, DEFAULT_LINK_TTL_SECS)
                 .await
                 .is_ok()
         );

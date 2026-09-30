@@ -1,3 +1,4 @@
+use crate::constants::DEFAULT_TRANSFER_QUOTA_BYTES;
 use anyhow::Context;
 use clap::Parser;
 use std::path::PathBuf;
@@ -13,7 +14,7 @@ pub(crate) struct Args {
     #[arg(long, default_value = "/tmp")]
     pub(crate) tmp_path: PathBuf,
     /// Shared byte quota for download copies and pending/active uploads.
-    #[arg(long, default_value_t = 1_073_741_824)]
+    #[arg(long, default_value_t = DEFAULT_TRANSFER_QUOTA_BYTES)]
     pub(crate) transfer_quota_bytes: u64,
 }
 

@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use tokio::{fs::File, io::AsyncReadExt};
 
 use super::PkbManager;
+use crate::constants::IO_BUFFER_BYTES;
 use crate::paths::resolve_inside_root;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -35,7 +36,7 @@ async fn stat_file(path: &Path) -> io::Result<StatOutput> {
     }
     let modified = metadata.modified()?;
     let mut hasher = Sha256::new();
-    let mut buffer = vec![0u8; 65_536];
+    let mut buffer = vec![0u8; IO_BUFFER_BYTES];
     let mut bytes_read = 0u64;
     loop {
         let count = file.read(&mut buffer).await?;
@@ -91,7 +92,8 @@ mod tests {
     async fn hashes_binary_content_across_buffers_and_returns_metadata() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("binary");
-        let bytes: Vec<u8> = (0..150_001).map(|index| index as u8).collect();
+        const FILE_BYTES: usize = 150_001;
+        let bytes: Vec<u8> = (0..FILE_BYTES).map(|index| index as u8).collect();
         tokio::fs::write(&path, &bytes).await.unwrap();
         let modified = tokio::fs::metadata(&path)
             .await

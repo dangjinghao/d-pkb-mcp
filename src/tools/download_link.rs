@@ -7,6 +7,7 @@ use rmcp::{
 };
 
 use super::PkbManager;
+use crate::constants::{DEFAULT_LINK_TTL_SECS, MAX_LINK_TTL_SECS, MIN_LINK_TTL_SECS};
 use crate::paths::resolve_inside_root;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -24,9 +25,11 @@ impl PkbManager {
         &self,
         Parameters(DownloadLinkParams { path, secs }): Parameters<DownloadLinkParams>,
     ) -> Result<CallToolResult, String> {
-        let secs = secs.unwrap_or(300);
-        if !(1..=3600).contains(&secs) {
-            return Err("secs must be between 1 and 3600".to_owned());
+        let secs = secs.unwrap_or(DEFAULT_LINK_TTL_SECS);
+        if !(MIN_LINK_TTL_SECS..=MAX_LINK_TTL_SECS).contains(&secs) {
+            return Err(format!(
+                "secs must be between {MIN_LINK_TTL_SECS} and {MAX_LINK_TTL_SECS}"
+            ));
         }
         let target = resolve_inside_root(&self.pkb_root, &path).ok_or("Unsupported <path>")?;
         let _guard = self.mutex_lock.lock().await;

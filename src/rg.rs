@@ -8,6 +8,7 @@ use tokio::{
 };
 
 pub(crate) const NOT_AVAILABLE: &str = "`rg` is not available, use native tool instead";
+const RG_ERROR_EXIT_CODE: i32 = 2;
 
 pub(crate) struct Output {
     pub(crate) lines: Vec<String>,
@@ -56,9 +57,8 @@ pub(crate) async fn run(cwd: &Path, args: Vec<OsString>, limit: usize) -> Result
 
     let status = child.wait().await.map_err(|e| e.to_string())?;
     let stderr = stderr_task.await.unwrap_or_default();
-    //  2  exit status occurs when an error occurred. This is true for both catastrophic errors (e.g., a regex syntax
-    //   error) and for soft errors (e.g., unable to read a file).
-    if status.code() == Some(2) {
+    // Ripgrep uses this status for both catastrophic and soft errors.
+    if status.code() == Some(RG_ERROR_EXIT_CODE) {
         return Err(stderr.trim().to_owned());
     }
 

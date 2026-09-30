@@ -7,6 +7,7 @@ use rmcp::{
 };
 
 use super::PkbManager;
+use crate::constants::DEFAULT_LINK_TTL_SECS;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct UploadPrepareParams {
@@ -34,7 +35,13 @@ impl PkbManager {
     ) -> Result<CallToolResult, String> {
         let subpath = self
             .uploads
-            .prepare(&path, full_size, sha256, if_hash, secs.unwrap_or(300))
+            .prepare(
+                &path,
+                full_size,
+                sha256,
+                if_hash,
+                secs.unwrap_or(DEFAULT_LINK_TTL_SECS),
+            )
             .await
             .map_err(|error| error.message)?;
         Ok(CallToolResult::success(vec![ContentBlock::text(subpath)]))

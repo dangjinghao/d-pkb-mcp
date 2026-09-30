@@ -23,10 +23,15 @@ use tokio::{
     io::{AsyncSeekExt, AsyncWriteExt},
 };
 
+use crate::{
+    constants::{MAX_LINK_TTL_SECS, MIN_LINK_TTL_SECS, TOKEN_BYTES},
+    hash::SHA256_HEX_CHARS,
+};
 use crate::{hash::sha256_large_file, paths::resolve_inside_root, staging::stage};
 
 const MAX_UPLOADS: usize = 128;
-const RECEIVE_TIMEOUT: Duration = Duration::from_secs(300);
+const UPLOAD_RECEIVE_TIMEOUT_SECS: u64 = 300;
+const RECEIVE_TIMEOUT: Duration = Duration::from_secs(UPLOAD_RECEIVE_TIMEOUT_SECS);
 
 #[derive(Debug)]
 pub(crate) struct UploadError {
@@ -148,7 +153,7 @@ impl Uploads {
         secs: u64,
     ) -> Result<String, UploadError> {
         let valid_hash = |hash: &str| {
-            hash.len() == 64
+            hash.len() == SHA256_HEX_CHARS
                 && hash
                     .bytes()
                     .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
@@ -156,13 +161,15 @@ impl Uploads {
         if !valid_hash(&sha256) || if_hash.as_deref().is_some_and(|hash| !valid_hash(hash)) {
             return Err(UploadError::new(
                 StatusCode::BAD_REQUEST,
-                "sha256 and if_hash must be 64-character lowercase hexadecimal SHA-256 values",
+                format!(
+                    "sha256 and if_hash must be {SHA256_HEX_CHARS}-character lowercase hexadecimal SHA-256 values"
+                ),
             ));
         }
-        if !(1..=3600).contains(&secs) {
+        if !(MIN_LINK_TTL_SECS..=MAX_LINK_TTL_SECS).contains(&secs) {
             return Err(UploadError::new(
                 StatusCode::BAD_REQUEST,
-                "secs must be between 1 and 3600",
+                format!("secs must be between {MIN_LINK_TTL_SECS} and {MAX_LINK_TTL_SECS}"),
             ));
         }
         let target = resolve_inside_root(&self.root, path)
@@ -205,7 +212,7 @@ impl Uploads {
                 _transfer: transfer,
             })),
         });
-        let token = URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>());
+        let token = URL_SAFE_NO_PAD.encode(rand::random::<[u8; TOKEN_BYTES]>());
         entries.insert(token.clone(), upload);
         drop(usage);
         drop(entries);
@@ -403,8 +410,19 @@ pub(crate) async fn resource_upload(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::DEFAULT_LINK_TTL_SECS;
     use crate::hash::sha256_hex;
     use std::os::unix::fs::PermissionsExt;
+
+    const SMALL_QUOTA_BYTES: u64 = 10;
+    const LARGE_FILE_BYTES: usize = 150_001;
+    const LARGE_QUOTA_BYTES: u64 = 300_000;
+    const BODY_CHUNK_BYTES: usize = 8_192;
+    const BINARY_FILL_BYTE: u8 = 255;
+    const SHORT_LINK_TTL_SECS: u64 = 1;
+    const EXPIRY_GRACE: Duration = Duration::from_millis(100);
+    const FILE_MODE: u32 = 0o640;
+    const FILE_MODE_MASK: u32 = 0o777;
 
     fn store(dir: &std::path::Path, quota: u64) -> Arc<Uploads> {
         Arc::new(Uploads::new(
@@ -430,15 +448,23 @@ mod tests {
     #[tokio::test]
     async fn streams_binary_create_and_prevents_token_reuse() {
         let dir = tempfile::tempdir().unwrap();
-        let store = store(dir.path(), 300_000);
-        let bytes = vec![255u8; 150_001];
+        let store = store(dir.path(), LARGE_QUOTA_BYTES);
+        let bytes = vec![BINARY_FILL_BYTE; LARGE_FILE_BYTES];
         let url = store
-            .prepare("binary", bytes.len() as u64, sha256_hex(&bytes), None, 300)
+            .prepare(
+                "binary",
+                bytes.len() as u64,
+                sha256_hex(&bytes),
+                None,
+                DEFAULT_LINK_TTL_SECS,
+            )
             .await
             .unwrap();
         assert!(url.starts_with("/uploads/"));
-        let chunks: Vec<Result<Vec<u8>, io::Error>> =
-            bytes.chunks(8192).map(|chunk| Ok(chunk.to_vec())).collect();
+        let chunks: Vec<Result<Vec<u8>, io::Error>> = bytes
+            .chunks(BODY_CHUNK_BYTES)
+            .map(|chunk| Ok(chunk.to_vec()))
+            .collect();
         let output = put(
             &store,
             &url,
@@ -464,9 +490,15 @@ mod tests {
     #[tokio::test]
     async fn failed_validation_and_disconnect_allow_retry_without_partial_files() {
         let dir = tempfile::tempdir().unwrap();
-        let store = store(dir.path(), 10);
+        let store = store(dir.path(), SMALL_QUOTA_BYTES);
         let url = store
-            .prepare("new", 3, sha256_hex(b"abc"), None, 300)
+            .prepare(
+                "new",
+                b"abc".len() as u64,
+                sha256_hex(b"abc"),
+                None,
+                DEFAULT_LINK_TTL_SECS,
+            )
             .await
             .unwrap();
         for (body, expected) in [
@@ -502,56 +534,65 @@ mod tests {
 
     #[tokio::test]
     async fn overwrite_rechecks_hash_and_preserves_permissions() {
+        const ORIGINAL: &[u8] = &[255, 0];
+        const REPLACEMENT: &[u8] = &[128, 0];
+        const CONFLICTING: &[u8] = &[1, 2];
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("binary");
-        fs::write(&path, [255, 0]).await.unwrap();
-        fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640))
+        fs::write(&path, ORIGINAL).await.unwrap();
+        fs::set_permissions(&path, std::fs::Permissions::from_mode(FILE_MODE))
             .await
             .unwrap();
-        let store = store(dir.path(), 10);
-        let original_hash = sha256_hex(&[255, 0]);
+        let store = store(dir.path(), SMALL_QUOTA_BYTES);
+        let original_hash = sha256_hex(ORIGINAL);
         let url = store
             .prepare(
                 "binary",
-                2,
-                sha256_hex(&[128, 0]),
+                REPLACEMENT.len() as u64,
+                sha256_hex(REPLACEMENT),
                 Some(original_hash.clone()),
-                300,
+                DEFAULT_LINK_TTL_SECS,
             )
             .await
             .unwrap();
-        fs::write(&path, [1, 2]).await.unwrap();
+        fs::write(&path, CONFLICTING).await.unwrap();
         assert_eq!(
-            put(&store, &url, Body::from(vec![128, 0]))
+            put(&store, &url, Body::from(REPLACEMENT.to_vec()))
                 .await
                 .unwrap_err()
                 .status,
             StatusCode::CONFLICT
         );
-        assert_eq!(fs::read(&path).await.unwrap(), [1, 2]);
-        fs::write(&path, [255, 0]).await.unwrap();
+        assert_eq!(fs::read(&path).await.unwrap(), CONFLICTING);
+        fs::write(&path, ORIGINAL).await.unwrap();
         assert_eq!(
-            put(&store, &url, Body::from(vec![128, 0]))
+            put(&store, &url, Body::from(REPLACEMENT.to_vec()))
                 .await
                 .unwrap()
                 .0
                 .after_hash,
-            sha256_hex(&[128, 0])
+            sha256_hex(REPLACEMENT)
         );
-        assert_eq!(fs::read(&path).await.unwrap(), [128, 0]);
+        assert_eq!(fs::read(&path).await.unwrap(), REPLACEMENT);
         assert_eq!(
-            fs::metadata(&path).await.unwrap().permissions().mode() & 0o777,
-            0o640
+            fs::metadata(&path).await.unwrap().permissions().mode() & FILE_MODE_MASK,
+            FILE_MODE
         );
     }
 
     #[tokio::test]
     async fn rechecks_create_and_parent_and_cleans_failed_staging() {
         let dir = tempfile::tempdir().unwrap();
-        let store = store(dir.path(), 10);
+        let store = store(dir.path(), SMALL_QUOTA_BYTES);
         fs::create_dir(dir.path().join("parent")).await.unwrap();
         let url = store
-            .prepare("parent/new", 1, sha256_hex(b"x"), None, 300)
+            .prepare(
+                "parent/new",
+                1,
+                sha256_hex(b"x"),
+                None,
+                DEFAULT_LINK_TTL_SECS,
+            )
             .await
             .unwrap();
         fs::remove_dir(dir.path().join("parent")).await.unwrap();
@@ -579,7 +620,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = store(dir.path(), 1);
         let url = store
-            .prepare("new", 1, sha256_hex(b"x"), None, 1)
+            .prepare("new", 1, sha256_hex(b"x"), None, SHORT_LINK_TTL_SECS)
             .await
             .unwrap();
         let attempt = store.begin(&token(&url)).unwrap();
@@ -587,14 +628,14 @@ mod tests {
             put(&store, &url, Body::from("x")).await.unwrap_err().status,
             StatusCode::CONFLICT
         );
-        tokio::time::sleep(Duration::from_millis(1100)).await;
+        tokio::time::sleep(Duration::from_secs(SHORT_LINK_TTL_SECS) + EXPIRY_GRACE).await;
         assert_eq!(
             put(&store, &url, Body::from("x")).await.unwrap_err().status,
             StatusCode::NOT_FOUND
         );
         assert!(
             store
-                .prepare("other", 1, sha256_hex(b"y"), None, 300)
+                .prepare("other", 1, sha256_hex(b"y"), None, DEFAULT_LINK_TTL_SECS)
                 .await
                 .is_err()
         );
@@ -603,25 +644,26 @@ mod tests {
         assert_eq!(store.usage.lock().unwrap().bytes, 0);
         assert_eq!(fs::read(dir.path().join("new")).await.unwrap(), b"x");
         store
-            .prepare("other", 1, sha256_hex(b"y"), None, 300)
+            .prepare("other", 1, sha256_hex(b"y"), None, DEFAULT_LINK_TTL_SECS)
             .await
             .unwrap();
     }
 
     #[tokio::test]
     async fn validates_prepare_and_releases_expired_reservations() {
+        const OVERSIZED_REQUEST_BYTES: u64 = 2;
         let dir = tempfile::tempdir().unwrap();
         let store = store(dir.path(), 1);
         let hash = sha256_hex(b"x");
         for path in ["../outside", "/absolute", ".", "missing/new"] {
             assert!(
                 store
-                    .prepare(path, 1, hash.clone(), None, 300)
+                    .prepare(path, 1, hash.clone(), None, DEFAULT_LINK_TTL_SECS)
                     .await
                     .is_err()
             );
         }
-        for secs in [0, 3601] {
+        for secs in [MIN_LINK_TTL_SECS - 1, MAX_LINK_TTL_SECS + 1] {
             assert!(
                 store
                     .prepare("new", 1, hash.clone(), None, secs)
@@ -629,38 +671,61 @@ mod tests {
                     .is_err()
             );
         }
-        for invalid in ["bad".to_owned(), "G".repeat(64)] {
-            assert!(store.prepare("new", 1, invalid, None, 300).await.is_err());
+        for invalid in ["bad".to_owned(), "G".repeat(SHA256_HEX_CHARS)] {
+            assert!(
+                store
+                    .prepare("new", 1, invalid, None, DEFAULT_LINK_TTL_SECS)
+                    .await
+                    .is_err()
+            );
         }
         assert!(
             store
-                .prepare("new", 1, hash.clone(), Some("bad".into()), 300)
+                .prepare(
+                    "new",
+                    1,
+                    hash.clone(),
+                    Some("bad".into()),
+                    DEFAULT_LINK_TTL_SECS
+                )
                 .await
                 .is_err()
         );
         assert!(
             store
-                .prepare("missing", 1, hash.clone(), Some(hash.clone()), 300)
+                .prepare(
+                    "missing",
+                    1,
+                    hash.clone(),
+                    Some(hash.clone()),
+                    DEFAULT_LINK_TTL_SECS
+                )
                 .await
                 .is_err()
         );
         assert!(
             store
-                .prepare("new", 2, hash.clone(), None, 300)
+                .prepare(
+                    "new",
+                    OVERSIZED_REQUEST_BYTES,
+                    hash.clone(),
+                    None,
+                    DEFAULT_LINK_TTL_SECS
+                )
                 .await
                 .is_err()
         );
         let url = store
-            .prepare("new", 1, hash.clone(), None, 1)
+            .prepare("new", 1, hash.clone(), None, SHORT_LINK_TTL_SECS)
             .await
             .unwrap();
         assert!(
             store
-                .prepare("other", 1, hash.clone(), None, 300)
+                .prepare("other", 1, hash.clone(), None, DEFAULT_LINK_TTL_SECS)
                 .await
                 .is_err()
         );
-        tokio::time::sleep(Duration::from_millis(1100)).await;
+        tokio::time::sleep(Duration::from_secs(SHORT_LINK_TTL_SECS) + EXPIRY_GRACE).await;
         assert_eq!(
             put(&store, &url, Body::from("x")).await.unwrap_err().status,
             StatusCode::NOT_FOUND
@@ -668,7 +733,7 @@ mod tests {
         assert_eq!(store.usage.lock().unwrap().bytes, 0);
         assert_eq!(store.usage.lock().unwrap().count, 0);
         let empty = store
-            .prepare("empty", 0, sha256_hex(b""), None, 300)
+            .prepare("empty", 0, sha256_hex(b""), None, DEFAULT_LINK_TTL_SECS)
             .await
             .unwrap();
         assert_eq!(
@@ -685,9 +750,9 @@ mod tests {
     #[tokio::test]
     async fn cancelled_attempt_is_retryable_and_upload_does_not_hold_operation_lock() {
         let dir = tempfile::tempdir().unwrap();
-        let store = store(dir.path(), 10);
+        let store = store(dir.path(), SMALL_QUOTA_BYTES);
         let url = store
-            .prepare("new", 1, sha256_hex(b"x"), None, 300)
+            .prepare("new", 1, sha256_hex(b"x"), None, DEFAULT_LINK_TTL_SECS)
             .await
             .unwrap();
         let attempt = store.begin(&token(&url)).unwrap();

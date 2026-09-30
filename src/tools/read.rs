@@ -26,18 +26,20 @@ struct ReadOutput {
     is_truncated: bool,
 }
 
+const FIRST_LINE_NUMBER: usize = 1;
+
 async fn read_file(path: &Path, start: usize, limit: usize) -> io::Result<(String, bool, String)> {
-    if start == 0 {
+    if start < FIRST_LINE_NUMBER {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "start must be at least 1",
+            format!("start must be at least {FIRST_LINE_NUMBER}"),
         ));
     }
     let file_content = fs::read_to_string(path).await?;
     let hash = sha256_hex(file_content.as_bytes());
 
     let lines: Vec<&str> = file_content.split_inclusive('\n').collect();
-    let begin = (start - 1).min(lines.len());
+    let begin = (start - FIRST_LINE_NUMBER).min(lines.len());
     let end = if limit == 0 {
         lines.len()
     } else {
@@ -76,7 +78,7 @@ impl PkbManager {
         let Some(target) = resolve_inside_root(self.pkb_root.as_path(), &file_path) else {
             return Err("Unsupported <file_path>".to_owned());
         };
-        let start = start.unwrap_or(1);
+        let start = start.unwrap_or(FIRST_LINE_NUMBER);
         let limit = limit.unwrap_or(DEFAULT_LIMIT);
 
         match read_file(&target, start, limit).await {

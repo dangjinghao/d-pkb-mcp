@@ -1,4 +1,5 @@
 mod args;
+mod constants;
 mod downloads;
 mod hash;
 mod paths;

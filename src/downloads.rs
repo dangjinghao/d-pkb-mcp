@@ -22,7 +22,10 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
 };
 
+use crate::constants::{IO_BUFFER_BYTES, TOKEN_BYTES};
+
 const MAX_COPIES: usize = 128;
+const EOF_PROBE_BYTES: usize = 1;
 
 #[derive(Default)]
 struct Usage {
@@ -105,7 +108,7 @@ impl Downloads {
             .map_err(io::Error::other)??;
         let mut destination = File::from_std(file.try_clone()?);
         let copied = tokio::io::copy(&mut (&mut source).take(size), &mut destination).await?;
-        let mut extra = [0u8; 1];
+        let mut extra = [0u8; EOF_PROBE_BYTES];
         if copied != size || source.read(&mut extra).await? != 0 {
             return Err(io::Error::other(
                 "source size changed while preparing download",
@@ -126,7 +129,7 @@ impl Downloads {
             expires,
             _reservation: reservation,
         });
-        let token = URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>());
+        let token = URL_SAFE_NO_PAD.encode(rand::random::<[u8; TOKEN_BYTES]>());
         self.copies.lock().unwrap().insert(token.clone(), snapshot);
         let weak = Arc::downgrade(self);
         let cleanup_token = token.clone();
@@ -176,7 +179,7 @@ pub(crate) async fn download(
             return Ok::<_, io::Error>(None);
         }
         let result = tokio::task::spawn_blocking(move || {
-            let mut buffer = vec![0; (copy.size - offset).min(65_536) as usize];
+            let mut buffer = vec![0; (copy.size - offset).min(IO_BUFFER_BYTES as u64) as usize];
             let count = copy.file.read_at(&mut buffer, offset)?;
             if count == 0 {
                 return Err(io::Error::new(
@@ -207,7 +210,14 @@ pub(crate) async fn download(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::DEFAULT_LINK_TTL_SECS;
     use axum::body::to_bytes;
+
+    const LARGE_FILE_BYTES: usize = 150_000;
+    const LARGE_QUOTA_BYTES: usize = 300_000;
+    const BINARY_FILL_BYTE: u8 = 255;
+    const SHORT_LINK_TTL_SECS: u64 = 1;
+    const EXPIRY_GRACE: Duration = Duration::from_millis(100);
 
     fn store(bytes: u64) -> Arc<Downloads> {
         Arc::new(Downloads::new(Arc::new(
@@ -227,10 +237,13 @@ mod tests {
     async fn snapshots_survive_source_changes_and_concurrent_downloads() {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("binary file.bin");
-        let bytes = vec![255; 150_000];
+        let bytes = vec![BINARY_FILL_BYTE; LARGE_FILE_BYTES];
         tokio::fs::write(&source, &bytes).await.unwrap();
-        let store = store(300_000);
-        let url = store.prepare(&source, dir.path(), 300).await.unwrap();
+        let store = store(LARGE_QUOTA_BYTES as u64);
+        let url = store
+            .prepare(&source, dir.path(), DEFAULT_LINK_TTL_SECS)
+            .await
+            .unwrap();
         assert!(url.starts_with("/downloads/"));
         assert!(!url.contains("://"));
         tokio::fs::write(&source, b"changed").await.unwrap();
@@ -238,7 +251,10 @@ mod tests {
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
         let a = response(&store, &url).await.unwrap();
         let b = response(&store, &url).await.unwrap();
-        assert_eq!(a.headers()[header::CONTENT_LENGTH], "150000");
+        assert_eq!(
+            a.headers()[header::CONTENT_LENGTH],
+            LARGE_FILE_BYTES.to_string()
+        );
         assert!(
             a.headers()[header::CONTENT_DISPOSITION]
                 .to_str()
@@ -246,8 +262,8 @@ mod tests {
                 .contains("binary%20file.bin")
         );
         let (a, b) = tokio::join!(
-            to_bytes(a.into_body(), 300_000),
-            to_bytes(b.into_body(), 300_000)
+            to_bytes(a.into_body(), LARGE_QUOTA_BYTES),
+            to_bytes(b.into_body(), LARGE_QUOTA_BYTES)
         );
         assert_eq!(a.unwrap().as_ref(), bytes);
         assert_eq!(b.unwrap().as_ref(), bytes);
@@ -258,32 +274,61 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("file");
         tokio::fs::write(&path, b"payload").await.unwrap();
-        let store = store(7);
-        let url = store.prepare(&path, dir.path(), 1).await.unwrap();
+        const CONTENT: &[u8] = b"payload";
+        let store = store(CONTENT.len() as u64);
+        let url = store
+            .prepare(&path, dir.path(), SHORT_LINK_TTL_SECS)
+            .await
+            .unwrap();
         let active = response(&store, &url).await.unwrap();
-        assert!(store.prepare(&path, dir.path(), 1).await.is_err());
-        tokio::time::sleep(Duration::from_millis(1100)).await;
+        assert!(
+            store
+                .prepare(&path, dir.path(), SHORT_LINK_TTL_SECS)
+                .await
+                .is_err()
+        );
+        tokio::time::sleep(Duration::from_secs(SHORT_LINK_TTL_SECS) + EXPIRY_GRACE).await;
         assert_eq!(
             response(&store, &url).await.unwrap_err(),
             StatusCode::NOT_FOUND
         );
-        assert!(store.prepare(&path, dir.path(), 1).await.is_err());
+        assert!(
+            store
+                .prepare(&path, dir.path(), SHORT_LINK_TTL_SECS)
+                .await
+                .is_err()
+        );
         assert_eq!(
-            to_bytes(active.into_body(), 10).await.unwrap().as_ref(),
+            to_bytes(active.into_body(), CONTENT.len())
+                .await
+                .unwrap()
+                .as_ref(),
             b"payload"
         );
         assert_eq!(store.usage.lock().unwrap().bytes, 0);
-        store.prepare(&path, dir.path(), 1).await.unwrap();
+        store
+            .prepare(&path, dir.path(), SHORT_LINK_TTL_SECS)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
     async fn validates_files_quota_and_tokens() {
         let dir = tempfile::tempdir().unwrap();
         let store = store(1);
-        assert!(store.prepare(dir.path(), dir.path(), 300).await.is_err());
         assert!(
             store
-                .prepare(&dir.path().join("missing"), dir.path(), 300)
+                .prepare(dir.path(), dir.path(), DEFAULT_LINK_TTL_SECS)
+                .await
+                .is_err()
+        );
+        assert!(
+            store
+                .prepare(
+                    &dir.path().join("missing"),
+                    dir.path(),
+                    DEFAULT_LINK_TTL_SECS
+                )
                 .await
                 .is_err()
         );
@@ -293,7 +338,12 @@ mod tests {
         );
         let source = dir.path().join("large");
         tokio::fs::write(&source, b"large").await.unwrap();
-        assert!(store.prepare(&source, dir.path(), 300).await.is_err());
+        assert!(
+            store
+                .prepare(&source, dir.path(), DEFAULT_LINK_TTL_SECS)
+                .await
+                .is_err()
+        );
         assert_eq!(store.usage.lock().unwrap().copies, 0);
     }
 
@@ -305,12 +355,15 @@ mod tests {
         let store = store(1);
         assert!(
             store
-                .prepare(&source, &dir.path().join("missing"), 300)
+                .prepare(&source, &dir.path().join("missing"), DEFAULT_LINK_TTL_SECS)
                 .await
                 .is_err()
         );
         assert_eq!(store.usage.lock().unwrap().copies, 0);
-        let url = store.prepare(&source, dir.path(), 300).await.unwrap();
+        let url = store
+            .prepare(&source, dir.path(), DEFAULT_LINK_TTL_SECS)
+            .await
+            .unwrap();
         let response = response(&store, &url).await.unwrap();
         assert_eq!(response.headers()[header::CONTENT_LENGTH], "0");
         assert!(to_bytes(response.into_body(), 1).await.unwrap().is_empty());
