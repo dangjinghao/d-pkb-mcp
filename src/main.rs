@@ -1,4 +1,5 @@
 mod args;
+mod downloads;
 mod hash;
 mod paths;
 mod rg;
@@ -23,5 +24,5 @@ async fn main() -> anyhow::Result<()> {
         root.display()
     );
 
-    server::run(root, tmp_path, &addr).await
+    server::run(root, tmp_path, &addr, args.download_quota_bytes).await
 }

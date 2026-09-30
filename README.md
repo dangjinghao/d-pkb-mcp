@@ -13,6 +13,40 @@ Relative root paths are resolved from the server's startup working directory.
 Tool paths are resolved relative to this root. The MCP endpoint is
 `http://127.0.0.1:8000/mcp`.
 
+## Binary reads and downloads
+
+`bin_read(path, start, size)` reads a byte range and returns structured
+`{base64, size}`. Offsets are zero-based; input `size` must be between 0 and
+65,536 bytes (64 KiB), regardless of total file size. Output `size` is the actual
+raw byte count. Reads crossing EOF return remaining bytes; starting at EOF
+returns empty content, while starting beyond EOF is an error.
+
+`download_link(path, secs?)` returns only `/downloads/<token>` as text, without
+a scheme or host. `secs` defaults to 300 and accepts 1–3,600 seconds.
+Download with an ordinary HTTP GET,
+for example `curl --fail --output attachment.bin "$url"`. The server streams raw
+bytes from a private copy, so later source changes do not affect the download.
+Links can be reused until expiry. Expired or unknown links return HTTP 404;
+downloads already started may finish. HTTP Range/partial downloads are not
+supported; a GET with a Range header receives the full file with HTTP 200.
+
+The agent assembles the download URL using the externally reachable MCP endpoint:
+remove its trailing `/mcp` and append the returned subpath. For example,
+`https://example.com/pkb/mcp` plus `/downloads/TOKEN` becomes
+`https://example.com/pkb/downloads/TOKEN`. Preserve the reverse-proxy prefix;
+do not resolve the leading slash against the host root. The proxy must forward
+both MCP and download routes. No server-side domain configuration is required.
+
+Copies use anonymous temporary files in `--tmp-path`, inaccessible through PKB
+paths and automatically removed when their last owner closes them. They expire
+in the background; active downloads retain their copies until completion or
+disconnect. Restarting the server invalidates all links. Up to 128 copies may
+exist, including active downloads; combined size defaults to 1 GiB and can be
+changed with `--download-quota-bytes`. Copy preparation holds the existing write
+lock and can delay other file operations; external filesystem writers are not
+covered by that lock. Both tools follow the existing no-symbolic-links PKB
+assumption. Anyone holding a URL can download its copy during its lifetime.
+
 ## Docker
 
 Build the image:

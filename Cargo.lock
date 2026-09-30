@@ -327,10 +327,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "base64",
  "cargo-husky",
  "chrono",
  "clap",
+ "futures-util",
  "globset",
+ "rand",
  "regex",
  "rmcp",
  "serde",
