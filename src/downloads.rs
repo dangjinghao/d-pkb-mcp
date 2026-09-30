@@ -33,6 +33,7 @@ struct Usage {
 struct Reservation {
     usage: Arc<Mutex<Usage>>,
     bytes: u64,
+    _transfer: crate::transfers::Reservation,
 }
 
 impl Drop for Reservation {
@@ -52,19 +53,18 @@ struct Snapshot {
 }
 
 pub(crate) struct Downloads {
-    quota: u64,
+    quota: Arc<crate::transfers::TransferQuota>,
     usage: Arc<Mutex<Usage>>,
     copies: Mutex<HashMap<String, Arc<Snapshot>>>,
 }
 
 impl Downloads {
-    pub(crate) fn new(quota: u64) -> anyhow::Result<Self> {
-        anyhow::ensure!(quota > 0, "download-quota-bytes must be positive");
-        Ok(Self {
+    pub(crate) fn new(quota: Arc<crate::transfers::TransferQuota>) -> Self {
+        Self {
             quota,
             usage: Arc::new(Mutex::new(Usage::default())),
             copies: Mutex::new(HashMap::new()),
-        })
+        }
     }
 
     pub(crate) async fn prepare(
@@ -84,16 +84,18 @@ impl Downloads {
         let size = metadata.len();
         let reservation = {
             let mut usage = self.usage.lock().unwrap();
-            if usage.copies >= MAX_COPIES || size > self.quota.saturating_sub(usage.bytes) {
+            if usage.copies >= MAX_COPIES {
                 return Err(io::Error::other(
                     "download copy quota exceeded; wait for existing links to expire",
                 ));
             }
+            let transfer = self.quota.reserve(size).ok_or_else(|| io::Error::other("transfer byte quota exceeded; wait for downloads or uploads to release capacity"))?;
             usage.bytes += size;
             usage.copies += 1;
             Reservation {
                 usage: self.usage.clone(),
                 bytes: size,
+                _transfer: transfer,
             }
         };
         // tempfile_in creates an anonymous file: no path can expose it through PKB tools.
@@ -207,6 +209,12 @@ mod tests {
     use super::*;
     use axum::body::to_bytes;
 
+    fn store(bytes: u64) -> Arc<Downloads> {
+        Arc::new(Downloads::new(Arc::new(
+            crate::transfers::TransferQuota::new(bytes).unwrap(),
+        )))
+    }
+
     async fn response(store: &Arc<Downloads>, url: &str) -> Result<Response, StatusCode> {
         download(
             State(store.clone()),
@@ -221,7 +229,7 @@ mod tests {
         let source = dir.path().join("binary file.bin");
         let bytes = vec![255; 150_000];
         tokio::fs::write(&source, &bytes).await.unwrap();
-        let store = Arc::new(Downloads::new(300_000).unwrap());
+        let store = store(300_000);
         let url = store.prepare(&source, dir.path(), 300).await.unwrap();
         assert!(url.starts_with("/downloads/"));
         assert!(!url.contains("://"));
@@ -250,7 +258,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("file");
         tokio::fs::write(&path, b"payload").await.unwrap();
-        let store = Arc::new(Downloads::new(7).unwrap());
+        let store = store(7);
         let url = store.prepare(&path, dir.path(), 1).await.unwrap();
         let active = response(&store, &url).await.unwrap();
         assert!(store.prepare(&path, dir.path(), 1).await.is_err());
@@ -271,7 +279,7 @@ mod tests {
     #[tokio::test]
     async fn validates_files_quota_and_tokens() {
         let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(Downloads::new(1).unwrap());
+        let store = store(1);
         assert!(store.prepare(dir.path(), dir.path(), 300).await.is_err());
         assert!(
             store
@@ -294,7 +302,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("empty");
         tokio::fs::write(&source, b"").await.unwrap();
-        let store = Arc::new(Downloads::new(1).unwrap());
+        let store = store(1);
         assert!(
             store
                 .prepare(&source, &dir.path().join("missing"), 300)
@@ -306,11 +314,5 @@ mod tests {
         let response = response(&store, &url).await.unwrap();
         assert_eq!(response.headers()[header::CONTENT_LENGTH], "0");
         assert!(to_bytes(response.into_body(), 1).await.unwrap().is_empty());
-    }
-
-    #[test]
-    fn validates_quota() {
-        assert!(Downloads::new(1).is_ok());
-        assert!(Downloads::new(0).is_err());
     }
 }

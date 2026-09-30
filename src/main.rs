@@ -6,6 +6,8 @@ mod rg;
 mod server;
 mod staging;
 mod tools;
+mod transfers;
+mod uploads;
 
 use anyhow::Context;
 
@@ -24,5 +26,5 @@ async fn main() -> anyhow::Result<()> {
         root.display()
     );
 
-    server::run(root, tmp_path, &addr, args.download_quota_bytes).await
+    server::run(root, tmp_path, &addr, args.transfer_quota_bytes).await
 }

@@ -12,9 +12,9 @@ pub(crate) struct Args {
     pub(crate) addr: String,
     #[arg(long, default_value = "/tmp")]
     pub(crate) tmp_path: PathBuf,
-    /// Maximum combined bytes of prepared and active download copies.
+    /// Shared byte quota for download copies and pending/active uploads.
     #[arg(long, default_value_t = 1_073_741_824)]
-    pub(crate) download_quota_bytes: u64,
+    pub(crate) transfer_quota_bytes: u64,
 }
 
 impl Args {
@@ -33,7 +33,7 @@ impl Args {
             pkb_root: root,
             addr: args.addr,
             tmp_path: args.tmp_path,
-            download_quota_bytes: args.download_quota_bytes,
+            transfer_quota_bytes: args.transfer_quota_bytes,
         }
     }
 }

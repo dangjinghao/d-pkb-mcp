@@ -131,7 +131,13 @@ mod tests {
     async fn rejects_outside_paths_directories_and_missing_files() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();
-        let manager = PkbManager::new(root.clone(), root, Arc::new(Downloads::new(1).unwrap()));
+        let quota = Arc::new(crate::transfers::TransferQuota::new(1).unwrap());
+        let manager = PkbManager::new(
+            root.clone(),
+            root,
+            Arc::new(Downloads::new(quota.clone())),
+            quota,
+        );
         for path in ["../outside", "/etc/passwd", ".", "missing"] {
             assert!(
                 manager
