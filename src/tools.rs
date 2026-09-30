@@ -14,6 +14,7 @@ mod remove;
 mod rename;
 mod search;
 mod search_rg;
+mod stat;
 
 use rmcp::{ServerHandler, handler::server::router::tool::ToolRouter, tool_handler};
 use std::{path::PathBuf, sync::Arc};
@@ -46,6 +47,7 @@ impl PkbManager {
     fn tool_router() -> ToolRouter<Self> {
         Self::list_router()
             + Self::bin_read_router()
+            + Self::stat_router()
             + Self::download_link_router()
             + Self::read_router()
             + Self::create_router()

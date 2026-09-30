@@ -15,6 +15,20 @@ Tool paths are resolved relative to this root. The MCP endpoint is
 
 ## Binary reads and downloads
 
+`stat(path)` returns structured `{sha256, full_size, mtime}` for a regular file.
+`sha256` is the lowercase SHA-256 of all raw bytes, `full_size` is the total byte
+count, and `mtime` is a UTC RFC 3339 modification timestamp. Text and binary files
+are supported; directories and missing files are errors. Hashing scans the whole
+file in bounded buffers while holding the existing operation lock, but returns
+no file content. External filesystem writers are not covered by that lock.
+
+Use `stat` to get `sha256` for a write tool's `if_hash` without calling `read`.
+For changes based on binary ranges, call `stat` before `bin_read` and keep the
+original hash for the final conditional write. A stale hash must fail the write;
+`mtime` is informational and should not replace SHA-256 version checks. Existing
+`overwrite` and `edit` still accept text content; this tool does not add binary
+write support.
+
 `bin_read(path, start, size)` reads a byte range and returns structured
 `{base64, size}`. Offsets are zero-based; input `size` must be between 0 and
 65,536 bytes (64 KiB), regardless of total file size. Output `size` is the actual
