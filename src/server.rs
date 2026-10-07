@@ -30,15 +30,19 @@ pub(crate) async fn run(
         StreamableHttpServerConfig::default().disable_allowed_hosts(),
     );
 
-    let router = axum::Router::new()
+    let download_routes = axum::Router::new()
         .route("/downloads/{token}", axum::routing::get(download))
-        .with_state(downloads)
-        .merge(
-            axum::Router::new()
-                .route("/uploads/{token}", axum::routing::put(resource_upload))
-                .with_state(uploads),
-        )
+        .with_state(downloads);
+
+    let upload_routes = axum::Router::new()
+        .route("/uploads/{token}", axum::routing::put(resource_upload))
+        .with_state(uploads);
+
+    let router = axum::Router::new()
+        .merge(download_routes)
+        .merge(upload_routes)
         .nest_service("/mcp", service);
+
     println!("MCP server listening on http://{addr}/mcp");
     axum::serve(listener, router).await?;
     Ok(())

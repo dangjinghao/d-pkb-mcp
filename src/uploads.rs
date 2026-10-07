@@ -121,6 +121,7 @@ impl Drop for Attempt {
 pub(crate) struct Uploads {
     root: PathBuf,
     tmp_path: PathBuf,
+    // reuse PkbManager mutex_lock
     operation_lock: Arc<tokio::sync::Mutex<()>>,
     quota: Arc<crate::transfers::TransferQuota>,
     usage: Arc<Mutex<Usage>>,
@@ -349,18 +350,14 @@ impl Uploads {
             .await?;
         // Anonymous receive files cannot leak through PKB tools. Only stage a
         // named file under the operation lock when the verified upload is ready.
-        let temp = stage(&self.tmp_path, &entry.target, b"").await?;
-        let mut destination = fs::File::from_std(temp.reopen()?);
         file.seek(io::SeekFrom::Start(0)).await?;
-        let copied = tokio::io::copy(&mut file, &mut destination).await?;
-        destination.flush().await?;
-        if copied != entry.full_size {
+        let temp = stage(&self.tmp_path, &entry.target, &mut file).await?;
+        if temp.as_file().metadata()?.len() != entry.full_size {
             return Err(UploadError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "upload staging size mismatch",
             ));
         }
-        drop(destination);
         if entry.if_hash.is_some() {
             temp.persist(&entry.target)
                 .map_err(|error| UploadError::from(error.error))?;

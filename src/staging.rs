@@ -3,12 +3,17 @@
 use std::{fs::Permissions, io, os::unix::fs::PermissionsExt, path::Path};
 
 use tempfile::{Builder, NamedTempFile};
-use tokio::fs;
+use tokio::{
+    fs,
+    io::{AsyncRead, AsyncWriteExt},
+};
+
+const DEFAULT_FILE_MODE: u32 = 0o666;
 
 pub(crate) async fn stage(
     tmp_path: &Path,
     target: &Path,
-    content: &[u8],
+    mut reader: impl AsyncRead + Unpin,
 ) -> io::Result<NamedTempFile> {
     let existing = fs::metadata(target)
         .await
@@ -29,11 +34,14 @@ pub(crate) async fn stage(
     let mut builder = Builder::new();
     builder.prefix(&prefix).suffix(&suffix);
     if existing.is_none() {
-        builder.permissions(Permissions::from_mode(0o666));
+        builder.permissions(Permissions::from_mode(DEFAULT_FILE_MODE));
     }
     let temp = builder.tempfile_in(tmp_path)?;
 
-    fs::write(temp.path(), content).await?;
+    let mut destination = fs::File::from_std(temp.reopen()?);
+    tokio::io::copy(&mut reader, &mut destination).await?;
+    destination.flush().await?;
+    drop(destination);
     if let Some(metadata) = &existing {
         fs::set_permissions(temp.path(), metadata.permissions()).await?;
     }
